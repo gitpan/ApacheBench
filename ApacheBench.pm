@@ -11,7 +11,7 @@ require AutoLoader;
 @EXPORT = qw(
 	
 );
-$VERSION = '0.51';
+$VERSION = '0.52';
 
 bootstrap HTTPD::Bench::ApacheBench $VERSION;
 
@@ -687,6 +687,9 @@ receiving in any run.
 
 ApacheBench may consume quite a lot of memory in some cases, depending
 on how big your runs are, because it stores all HTTP response data in memory.
+
+If you are running in perl's taint-checking mode, and you pass tainted data
+to ApacheBench (e.g. a tainted URL), it will barf.  Don't ask me why.
 
 It has not been tested on any platforms other than Linux / Apache.
 Please send ports to other platforms to me (Adi Fairbank).

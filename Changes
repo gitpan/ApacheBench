@@ -1,0 +1,32 @@
+=head1 NAME
+
+Changes - HTTPD::Bench::ApacheBench change logfile
+
+=head1 CHANGES
+
+all changes without author attribution are by Adi Fairbank
+
+=over 3
+
+=item 0.52
+
+fixed segmentation fault that happened when ab() was called twice from
+a single process, which was due to bad data stored in global variables
+
+fixed annoying "Use of uninitialized value" warnings if undef values are
+passed as input to ApacheBench
+
+changed Content-type for POST requests to application/x-www-form-urlencoded
+
+=item 0.51 - Sep 26, 2000
+
+renamed module from ApacheBench to HTTPD::Bench::ApacheBench,
+suggested by Stas Bekman
+
+=item 0.5 - Sep 20, 2000
+
+initial public release
+
+=back
+
+=cut

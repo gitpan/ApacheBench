@@ -10,6 +10,7 @@ ap_md5.h
 ap_mmn.h
 os-inline.c
 ap_sha1.h
+Changes
 Makefile.PL
 MANIFEST
 README
