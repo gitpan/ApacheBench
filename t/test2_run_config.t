@@ -3,24 +3,32 @@
 use strict;
 use Test;
 
-BEGIN { plan tests => 8 }
+BEGIN { plan tests => 10 }
 
 use HTTPD::Bench::ApacheBench;
 
 my $b = HTTPD::Bench::ApacheBench->new;
 ok(ref $b, "HTTPD::Bench::ApacheBench");
 
-$b->add({
-	 repeat       => 3,
-	 urls         => [ "http://localhost/",
-			   "http://localhost/server-status" ],
-	 order        => "depth_first",
-	});
+my $run = HTTPD::Bench::ApacheBench::Run->new
+  ({ repeat   => 3,
+     urls     => [ "http://localhost/",
+		   "http://localhost/server-status" ],
+     order    => "depth_first" });
+ok(ref $run, "HTTPD::Bench::ApacheBench::Run");
 
-ok($b->{runs}->[0]->{repeat}, 3);
-ok(ref $b->{runs}->[0]->{urls}, "ARRAY");
-ok($#{$b->{runs}->[0]->{urls}}, 1);
-ok(ref $b->{runs}->[0]->{cookie}, "ARRAY");
-ok(ref $b->{runs}->[0]->{postdata}, "ARRAY");
-ok($#{$b->{runs}->[0]->{postdata}}, 1);
-ok($b->{runs}->[0]->{order}, "depth_first");
+$b->add_run($run);
+ok($b->run(0), $run);
+
+ok($b->run(0)->repeat, 3);
+
+my $urls = $b->run(0)->urls;
+ok(ref $urls, "ARRAY");
+ok($#$urls, 1);
+ok($b->run(0)->order, "depth_first");
+
+ok(ref $b->run(0)->cookies, "ARRAY");
+
+$run->content_types([ undef, "text/html" ]);
+ok(!defined $b->run(0)->content_types->[0]);
+ok($b->run(0)->content_types->[1], "text/html");

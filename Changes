@@ -8,7 +8,31 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
-=item 0.52
+=item 0.60 - Feb 23, 2001
+
+restructured regression hash; will break some scripts;
+see README.upgrading_0.5x-0.60 for details
+
+added new object-oriented API; see documentation for details
+
+renamed 'cookie' to 'cookies' and 'filesize' to 'buffersize' in
+configuration hash sent to ab() XS routine
+
+added support for customizable Content-type: headers in HTTP request
+
+added request time tracking (times taken to send each HTTP request)
+stored in 'request_time' array for each run iteration
+
+added global and per-run 'memory' setting to control how much regression
+data is remembered
+
+changed HTTP request User-Agent from ApacheBench/VERSION to
+ApacheBench-Perl/VERSION
+
+=item 0.52 - Nov 25, 2000
+
+added debugging printf() statements which can be turned on by defining
+AB_DEBUG at the top of ApacheBench.xs
 
 fixed segmentation fault that happened when ab() was called twice from
 a single process, which was due to bad data stored in global variables

@@ -3,18 +3,18 @@
 use strict;
 use Test;
 
-BEGIN { plan tests => 5 }
+BEGIN { plan tests => 7 }
 
 use HTTPD::Bench::ApacheBench;
 
 my $b = HTTPD::Bench::ApacheBench->new;
 ok(ref $b, "HTTPD::Bench::ApacheBench");
 
-$b->config({
-	    concurrency  => 2,
-	    priority     => "run_priority",
-	   });
-ok(exists $b->{filesize});
-ok(exists $b->{repeat});
-ok($b->{concurrency}, 2);
-ok($b->{priority}, "run_priority");
+$b->concurrency(2);
+ok($b->concurrency, 2);
+$b->priority("run_priority");
+ok($b->priority, "run_priority");
+ok(defined $b->buffersize);
+ok(defined $b->repeat);
+ok(defined $b->memory);
+ok(ref $b->{runs} eq "ARRAY");

@@ -196,7 +196,7 @@ struct connection {
 				 * cbuff */
     int thread;                 /* Thread number */
     int run;
-    struct timeval start, connect, done;
+    struct timeval start, connect, request, done;
     char *page_content;
     char *header;
 };
@@ -205,8 +205,10 @@ struct data {
     int run;			/* which run */
     int thread; 		/* Thread number */
     int read;			/* number of bytes read */
+    int bread;			/* total amount of entity body read */
     int ctime;			/* time in ms to connect */
-    int time;			/* time in ms for connection */
+    int rtime;			/* time in ms for http request */
+    int time;			/* time in ms for full req/resp interval */
     char *page_content;
     char *header;
 };
@@ -221,23 +223,21 @@ struct threadval {
 /* --------------------- GLOBALS ---------------------------- */
 
 struct global {
-    int *posting;   		/* GET if posting[]=0 */
-    int concurrency;	/* Number of multiple requests to make */
-    int *repeats;			/* Number of time to repeat for each run */
-    int repeat;			/* default repeat number if not specifid */
+    int concurrency;		/* Number of multiple requests to make */
+    int *repeats;		/* Number of time to repeat for each run */
     int requests;		/* the max of the repeats */
-    int *position;			/* The position next run starts */
-    char **servername;		/* name that server reports */
-    char **hostname; 		/* host name */
-    char **path;			/* path name */
-    char **postdata, **cookie;	/* datas for post and optional cookie line */
-    int *postlen;   		/* length of data to be POSTed */
-    int *port;			/* port numbers */
+    int *position;		/* The position next run starts */
 
-    int *doclen;			/* the length the document should be */
-    int *totalread; 		/* total number of bytes read */
-    int *totalbread;		/* totoal amount of entity body read */
+    char **hostname; 		/* host name */
+    int *port;			/* port numbers */
+    char **path;		/* path name */
+    char **ctypes;		/* values for Content-type: headers */
+
+    int *posting;		/* GET if posting[]=0 */
+    char **postdata, **cookie;	/* datas for post and optional cookie line */
+    int *postlen;		/* length of data to be POSTed */
     int *totalposted;		/* total number of bytes posted, inc. headers*/
+
     int *good, *failed;		/* number of good and bad requests */
     int *started, *finished, *arranged;
 				/* numbers of requests  started , */
@@ -245,20 +245,19 @@ struct global {
     int **which_thread;		/* which thread is available */
     struct threadval *ready_to_run_queue;
     int head, tail, done, need_to_be_done;
+
     int priority;
     int *order;
-    char warn_and_error[2048];
-    /*warn and error message returned to perl*/
-    int *filesize;
+    int *buffersize;
+    int *memory;
     int number_of_urls, number_of_runs;
-    int total_bytes_received;
-    char **page_content;
 
     /* store error cases */
     int err_length, err_conn, err_except;
+    char warn_and_error[2048];  /* warn and error message returned to perl */
 
-
-    struct timeval start, endtime;
+    int total_bytes_received;
+    struct timeval starttime, endtime;
 
     /* global request (and its length) */
     char request[512];
@@ -267,8 +266,10 @@ struct global {
     /* one global throw-away buffer to read stuff into */
     char buffer[8192];
 
-    struct connection *con;		/* connection array */
-    struct data **stats;		/* date for each request */
+    struct connection *con;	/* connection array */
+
+    /* regression data for each request */
+    struct data **stats;
 
     fd_set readbits, writebits;	/* bits for select */
     struct sockaddr_in server;	/* server addr structure */
@@ -281,8 +282,7 @@ struct global {
 /* keep warn and error massege */
 
 void
-myerr(char *warn_and_error, char *s)
-{
+myerr(char *warn_and_error, char *s) {
     if ((strlen(warn_and_error)+strlen(s)) < 2014) {
 	strcat(warn_and_error,"\n[Warn:] ");
 	strcat(warn_and_error,s);
@@ -296,8 +296,7 @@ myerr(char *warn_and_error, char *s)
    (small) request out in one go into our new socket buffer  */
 
 static void
-write_request(struct global * registry, struct connection * c)
-{
+write_request(struct global * registry, struct connection * c) {
 
 #ifndef NO_WRITEV
     struct iovec out[2]; int outcnt = 1;
@@ -321,7 +320,7 @@ write_request(struct global * registry, struct connection * c)
 	out[1].iov_base = registry->postdata[c->which];
 	out[1].iov_len = registry->postlen[c->which];
 	outcnt = 2;
-	registry->totalposted[c->which] += (registry->reqlen + registry->postlen[c->which]);
+	registry->totalposted[c->which] = (registry->reqlen + registry->postlen[c->which]);
     }
 #ifdef AB_DEBUG
     printf("AB_DEBUG: write_request() - stage 2a.2, registry->done = %d\n", registry->done);
@@ -334,15 +333,16 @@ write_request(struct global * registry, struct connection * c)
     ab_write(c->fd, registry->request, registry->reqlen);
     if (registry->posting[c->which] > 0) {
         ab_write(c->fd, registry->postdata[c->which], registry->postlen[c->which]);
-        registry->totalposted[c->which] += (registry->reqlen + registry->postlen[c->which]);
     }
 #endif
 #ifdef AB_DEBUG
     printf("AB_DEBUG: write_request() - stage 3, registry->done = %d\n", registry->done);
 #endif
-    c->page_content = calloc(1, registry->filesize[c->run]);
+    if (registry->memory[c->run] >= 3)
+	c->page_content = calloc(1, registry->buffersize[c->run]);
     FD_SET(c->fd, &registry->readbits);
     FD_CLR(c->fd, &registry->writebits);
+    gettimeofday(&c->request, 0);
 }
 
 /* --------------------------------------------------------- */
@@ -350,8 +350,7 @@ write_request(struct global * registry, struct connection * c)
 /* make an fd non blocking */
 
 static void
-nonblock(int fd)
-{
+nonblock(int fd) {
     int i = 1;
 #ifdef BEOS
     setsockopt(fd, SOL_SOCKET, SO_NONBLOCK, &i, sizeof(i));
@@ -365,8 +364,7 @@ nonblock(int fd)
 /* returns the time in ms between two timevals */
 
 static int
-timedif(struct timeval a, struct timeval b)
-{
+timedif(struct timeval a, struct timeval b) {
     register int us, s;
 
     us = a.tv_usec - b.tv_usec;
@@ -388,8 +386,7 @@ close_connection(struct global * registry, struct connection * c);
 /* start asnchronous non-blocking connection */
 
 static void
-start_connect(struct global * registry, struct connection * c)
-{
+start_connect(struct global * registry, struct connection * c) {
     c->read = 0;
     c->bread = 0;
     c->cbx = 0;
@@ -429,7 +426,7 @@ start_connect(struct global * registry, struct connection * c)
 	    sprintf(warn, "Bad hostname: %s, the information stored for it could be wrong!", registry->hostname[c->which]);
 	    myerr(registry->warn_and_error, warn);
 	    free(warn);
-	    /* bad hostname, yields the resourse */
+	    /* bad hostname, yields the resource */
 	    registry->good[c->which]++;
 	    close_connection(registry, c);
 	    return;
@@ -455,8 +452,9 @@ start_connect(struct global * registry, struct connection * c)
 	    ab_close(c->fd);
 	    registry->err_conn++;
 	    if (registry->failed[c->which]++ > 10) {
-		myerr(registry->warn_and_error, "\nTest aborted after 10 failures\n\n");
-		/* yields the resourse */
+		myerr(registry->warn_and_error,
+		      "\nTest aborted after 10 failures\n\n");
+		/* yields the resource */
 		registry->good[c->which]++;
 		close_connection(registry, c);
 		return;
@@ -481,49 +479,41 @@ start_connect(struct global * registry, struct connection * c)
 /* close down connection and save stats */
 
 static void
-close_connection(struct global * registry, struct connection * c)
-{
-    if (c->read >= registry->filesize[c->run])
-	myerr(registry->warn_and_error, "Filesize is too small,only part of the page stored!");
-    if (c->read == 0)
-	c->page_content = c->header = registry->servername[c->which] = "";
-    if (registry->good[c->which] == 1) {
-	/* first time here */
-	registry->doclen[c->which] = c->bread;	
-	registry->page_content[c->which] = c->page_content;
-    } else if (c->bread != registry->doclen[c->which]) {
-	char *warn = malloc(1024);
-	sprintf(warn,
-		"Contents from http://%s%s doesn't match the previous try.",
-		registry->hostname[c->which], registry->path[c->which]);
-	myerr(registry->warn_and_error, warn);
-	free(warn);
-	registry->failed[c->which]++;
-	registry->err_length++;
-    } else {
-	if (c->read)
-	    free(c->page_content);
-	c->page_content = registry->page_content[c->which];
+close_connection(struct global * registry, struct connection * c) {
+    if (c->read >= registry->buffersize[c->run])
+	myerr(registry->warn_and_error,
+	      "Buffer size is too small, only part of the page stored!");
+    if (c->read == 0) {
+	if (registry->memory[c->run] >= 3)
+	    c->page_content = "";
+	if (registry->memory[c->run] >= 2)
+	    c->header = "";
     }
 
-    /* save out time */
     {
 	struct data s;
-	gettimeofday(&c->done, 0);
-	s.read = c->read;
-	s.ctime = timedif(c->connect, c->start);
-	s.time = timedif(c->done, c->start);
-        s.thread = c->thread;
-	s.page_content = c->page_content;
-        s.header = c->header;
-        registry->stats[c->which][c->thread] = s;
+	if (registry->memory[c->run] >= 1) {
+	    gettimeofday(&c->done, 0);
+	    s.ctime = timedif(c->connect, c->start);
+	    s.rtime = timedif(c->request, c->start);
+	    s.time = timedif(c->done, c->start);
+	    s.thread = c->thread;
+	    s.read = c->read;
+	}
+	if (registry->memory[c->run] >= 2) {
+	    s.bread = c->bread;
+	    s.header = c->header;
+	}
+	if (registry->memory[c->run] >= 3)
+	    s.page_content = c->page_content;
+	registry->stats[c->which][c->thread] = s;
     }
 
     registry->total_bytes_received += c->read;
     registry->finished[c->which]++;
     ab_close(c->fd);
     FD_CLR(c->fd, &registry->readbits);
-    FD_CLR(c->fd, &registry->writebits); 
+    FD_CLR(c->fd, &registry->writebits);
 
     if (++registry->done >= registry->need_to_be_done)
 	return;
@@ -637,11 +627,11 @@ close_connection(struct global * registry, struct connection * c)
 	    c->state = STATE_DONE;
 	    return;
 	}
-    	c->thread = registry->ready_to_run_queue[registry->head].thread;
-    	c->which = registry->ready_to_run_queue[registry->head].which;
-    	c->run = registry->ready_to_run_queue[registry->head++].run;
-    	start_connect(registry, c);
-    	return;
+	c->thread = registry->ready_to_run_queue[registry->head].thread;
+	c->which = registry->ready_to_run_queue[registry->head].which;
+	c->run = registry->ready_to_run_queue[registry->head++].run;
+	start_connect(registry, c);
+	return;
     }
 }
 
@@ -650,11 +640,10 @@ close_connection(struct global * registry, struct connection * c)
 /* read data from connection */
 
 static void
-read_connection(struct global * registry, struct connection * c)
-{
+read_connection(struct global * registry, struct connection * c) {
     int r;
 
-    r = ab_read(c->fd, registry->buffer, sizeof(registry->buffer));	
+    r = ab_read(c->fd, registry->buffer, sizeof(registry->buffer));
     if (r == 0 || (r < 0 && errno != EAGAIN)) {
 	registry->good[c->which]++;
 	close_connection(registry, c);
@@ -664,8 +653,8 @@ read_connection(struct global * registry, struct connection * c)
     if (r < 0 && errno == EAGAIN)
 	return;
     c->read += r;
-    registry->totalread[c->which] += r;
-    if (c->read < registry->filesize[c->run]-1)
+    if (c->read < registry->buffersize[c->run]-1 &&
+	registry->memory[c->run] >= 3)
 	strncat(c->page_content, registry->buffer, r);
     if (!c->gotheader) {
 	char *s;
@@ -691,23 +680,11 @@ read_connection(struct global * registry, struct connection * c)
 	}
 	if (!s) {
 	    /*read rest next time */
-	    c->header = "";
-	    registry->servername[c->which] = "";
+	    if (registry->memory[c->run] >= 2)
+		c->header = "";
 	    return;
 	} else {
 	    /* have full header */
-	    if (!registry->good[c->which]) {
-		/* this is first time, extract some interesting info */
-		char *p, *q;
-		p = strstr(c->cbuff, "Server:");
-		q = registry->servername[c->which] = malloc(HEADERSIZE);
-		if (p) {
-		    p += 8;
-		    while ((*p != '\n')&&(*p!='\t')&&(*p!='\r'))
-			*q++ = *p++;
-		}
-		*q = 0;
-	    }
 
 	    /*
 	     * XXX: this parsing isn't even remotely HTTP compliant... but in
@@ -719,15 +696,15 @@ read_connection(struct global * registry, struct connection * c)
 
 	    c->gotheader = 1;
 	    *s = 0;		/* terminate at end of header */
-            c->header = malloc(HEADERSIZE);
-   	    strcpy(c->header, c->cbuff);
+	    if (registry->memory[c->run] >= 2) {
+		c->header = malloc(HEADERSIZE);
+		strcpy(c->header, c->cbuff);
+	    }
 	    c->bread += c->cbx - (s + l - c->cbuff) + r - tocopy;
-	    registry->totalbread[c->which] += c->bread;
 	}
     } else {
 	/* outside header, everything we have read is entity body */
 	c->bread += r;
-	registry->totalbread[c->which] += r;
     }
 }
 
@@ -735,11 +712,18 @@ read_connection(struct global * registry, struct connection * c)
 
     /* setup or reset request */
 int
-reset_request(struct global * registry, int i, int j)
-{
+reset_request(struct global * registry, int i, int j) {
+    char *ctype = malloc(40);
+    ctype = "application/x-www-form-urlencoded";
+
+    if (registry->ctypes[i]) {
+	free(ctype);
+	ctype = registry->ctypes[i];
+    }
+
     if (registry->posting[i] <= 0) {
 	sprintf(registry->request, "%s %s HTTP/1.0\r\n"
-		"User-Agent: ApacheBench/%s\r\n"
+		"User-Agent: ApacheBench-Perl/%s\r\n"
 		"%s"
 		"Host: %s\r\n"
 		"Accept: */*\r\n"
@@ -751,18 +735,19 @@ reset_request(struct global * registry, int i, int j)
 		registry->hostname[i]);
     } else {
 	sprintf(registry->request, "POST %s HTTP/1.0\r\n"
-		"User-Agent: ApacheBench/%s\r\n"
+		"User-Agent: ApacheBench-Perl/%s\r\n"
 		"%s"
 		"Host: %s\r\n"
 		"Accept: */*\r\n"
 		"Content-length: %d\r\n"
-		"Content-type: application/x-www-form-urlencoded\r\n"
+		"Content-type: %s\r\n"
 		"\r\n",
 		registry->path[i],
 		VERSION,
 		registry->cookie[j],
 		registry->hostname[i],
-		registry->postlen[i]);
+		registry->postlen[i],
+		ctype);
     }
 
     registry->reqlen = strlen(registry->request);
@@ -779,8 +764,7 @@ reset_request(struct global * registry, int i, int j)
 /* run the tests */
 
 static void
-test(struct global * registry)
-{
+test(struct global * registry) {
     struct timeval timeout, now;
     fd_set sel_read, sel_except, sel_write;
     int i;
@@ -822,7 +806,7 @@ test(struct global * registry)
 #endif
 
     /* ok - lets start */
-    gettimeofday(&registry->start, 0);
+    gettimeofday(&registry->starttime, 0);
 
 #ifdef AB_DEBUG
     printf("AB_DEBUG: test() - stage 4\n");
@@ -918,8 +902,7 @@ test(struct global * registry)
 /* split URL into parts */
 
 static int
-parse_url(struct global * registry, char *p, int i)
-{
+parse_url(struct global * registry, char *p, int i) {
     char *cp;
     char *h;
     char *url = malloc(1024);
@@ -953,12 +936,11 @@ parse_url(struct global * registry, char *p, int i)
 /* ------------------------------------------------------- */
 
 void
-initialize(struct global * registry)
-{
+initialize(struct global * registry) {
     int i,j;
 
     registry->cookie = malloc(registry->number_of_runs * sizeof(char *));
-    registry->filesize = malloc(registry->number_of_runs * sizeof(int));
+    registry->buffersize = malloc(registry->number_of_runs * sizeof(int));
     registry->which_thread = malloc(registry->number_of_urls * sizeof(int *));
     registry->arranged = malloc(registry->number_of_urls * sizeof(int));
 
@@ -988,31 +970,20 @@ initialize(struct global * registry)
 		registry->ready_to_run_queue[registry->tail++].which = registry->position[i];
 	    }
     }
-    registry->hostname = malloc(registry->number_of_urls * sizeof( char *));
-    registry->path = malloc(registry->number_of_urls * sizeof( char *));
+    registry->hostname = malloc(registry->number_of_urls * sizeof(char *));
+    registry->path = malloc(registry->number_of_urls * sizeof(char *));
     registry->port = malloc(registry->number_of_urls * sizeof(int));
+    registry->ctypes = malloc(registry->number_of_urls * sizeof(char *));
 				/* default port number */
-    registry->doclen = malloc(registry->number_of_urls * sizeof(int));
-				/* the length the document should be */
-    registry->totalread = malloc(registry->number_of_urls * sizeof(int));
-				/* total number of bytes read */
-    registry->totalbread = malloc(registry->number_of_urls * sizeof(int));
-				/* totoal amount of entity body read */
-    registry->totalposted = malloc(registry->number_of_urls * sizeof(int));
-				/* total number of bytes posted, inc. headers*/
     registry->started = malloc(registry->number_of_urls * sizeof(int));
     registry->finished = malloc(registry->number_of_urls * sizeof(int));
     registry->failed = malloc(registry->number_of_urls * sizeof(int));
     registry->good = malloc(registry->number_of_urls * sizeof(int));
-    registry->servername = malloc(registry->number_of_urls * sizeof(char *));
-    registry->page_content = malloc(registry->number_of_urls * sizeof(char *));
     registry->postdata = malloc(registry->number_of_urls * sizeof(char *));
     registry->postlen = malloc(registry->number_of_urls * sizeof(int));
     registry->posting = malloc(registry->number_of_urls * sizeof(int));
+    registry->totalposted = malloc(registry->number_of_urls * sizeof(int));
     for (i = 0; i < registry->number_of_urls; i++) {
-	registry->doclen[i] = 0;
-	registry->totalread[i] = 0;
-	registry->totalbread[i] = 0;
 	registry->totalposted[i] = 0;
 	registry->port[i] = 80;
 	registry->started[i] = 0;
@@ -1027,300 +998,373 @@ PROTOTYPES: ENABLE
 
 
 HV *
-ab(data_hash)
-     SV * data_hash;
+ab(input_hash)
+    SV * input_hash;
 
-     PREINIT:
-     char *pt,**url_keys;
-     int i,j,k;
-     int def_filesize; /* default filesize for all runs */
-     struct global *registry = malloc(sizeof(struct global));
+    PREINIT:
+    char *pt,**url_keys;
+    int i,j,k;
+    int def_buffersize; /* default buffersize for all runs */
+    int def_repeat; /* default number of repeats if unspecified in runs */
+    int def_memory; /* default memory setting if unspecified in runs */
+    struct global *registry = malloc(sizeof(struct global));
 
-     CODE:
-     SV * runs;
-     SV * urls;
-     SV * post_data;
-     SV * cookies;
-     AV * run_group, *tmpav;
-     SV * tmpsv;
-     HV * tmphv;
-     STRLEN len;
+    CODE:
+    SV * runs;
+    SV * urls;
+    SV * post_data;
+    SV * cookies;
+    SV * ctypes;
+    AV * run_group, *tmpav;
+    SV * tmpsv;
+    HV * tmphv;
+    STRLEN len;
 
-     if (AB_DEBUG2) printf("AB_DEBUG: start of ab()\n");
+    if (AB_DEBUG2) printf("AB_DEBUG: start of ab()\n");
 
-     registry->concurrency = 1;
-     registry->requests = 0;
-     registry->tail = 0;
-     registry->done = 0;
-     registry->need_to_be_done = 0;
-     strcpy(registry->warn_and_error, "\nWarning message from ab.");
-     registry->total_bytes_received = 0;
-     registry->err_length = 0;
-     registry->err_conn = 0;
-     registry->err_except = 0;
+    registry->concurrency = 1;
+    registry->requests = 0;
+    registry->tail = 0;
+    registry->done = 0;
+    registry->need_to_be_done = 0;
+    strcpy(registry->warn_and_error, "\nWarning message from ab.");
+    registry->total_bytes_received = 0;
+    registry->err_length = 0;
+    registry->err_conn = 0;
+    registry->err_except = 0;
+    registry->number_of_urls = 0;
 
-     /*Get necessary initial information and initialize*/
-     tmphv = (HV *)SvRV(data_hash);
+    /*Get necessary initial information and initialize*/
+    tmphv = (HV *)SvRV(input_hash);
 
-     tmpsv = *(hv_fetch(tmphv, "concurrency", 11, 0));
-     registry->concurrency = SvIV(tmpsv);
+    tmpsv = *(hv_fetch(tmphv, "concurrency", 11, 0));
+    registry->concurrency = SvIV(tmpsv);
 
-     tmpsv = *(hv_fetch(tmphv, "filesize", 8, 0));
-     def_filesize = SvIV(tmpsv);
+    tmpsv = *(hv_fetch(tmphv, "buffersize", 10, 0));
+    def_buffersize = SvIV(tmpsv);
 
-     tmpsv = *(hv_fetch(tmphv, "repeat", 6, 0));
-     registry->repeat = SvIV(tmpsv);
+    tmpsv = *(hv_fetch(tmphv, "repeat", 6, 0));
+    def_repeat = SvIV(tmpsv);
 
-     tmpsv = *(hv_fetch(tmphv, "priority", 8, 0));
-     pt = SvPV(tmpsv, len);
-     if (strcmp(pt, "run_priority") == 0)
-         registry->priority = RUN_PRIORITY;
-     else {
-	 registry->priority = EQUAL_OPPORTUNITY;
-	 if (strcmp(pt, "equal_opportunity") != 0)
-	     myerr(registry->warn_and_error, "Unknown priority value (the only possible priorities are run_priority and equal_opportunity), using default: equal_opportunity");
-     }
+    tmpsv = *(hv_fetch(tmphv, "memory", 6, 0));
+    def_memory = SvIV(tmpsv);
 
-     runs = *(hv_fetch(tmphv, "runs", 4, 0));
-     run_group = (AV *)SvRV(runs);
-     registry->number_of_runs = av_len(run_group) + 1;
+    tmpsv = *(hv_fetch(tmphv, "priority", 8, 0));
+    pt = SvPV(tmpsv, len);
+    if (strcmp(pt, "run_priority") == 0)
+        registry->priority = RUN_PRIORITY;
+    else {
+	registry->priority = EQUAL_OPPORTUNITY;
+	if (strcmp(pt, "equal_opportunity") != 0)
+	    myerr(registry->warn_and_error, "Unknown priority value (the only possible priorities are run_priority and equal_opportunity), using default: equal_opportunity");
+    }
 
-     registry->order = malloc(registry->number_of_runs * sizeof(int));
-     registry->repeats = malloc(registry->number_of_runs * sizeof(int));
-     registry->position = malloc((registry->number_of_runs+1) * sizeof(int));
+    runs = *(hv_fetch(tmphv, "runs", 4, 0));
+    run_group = (AV *)SvRV(runs);
+    registry->number_of_runs = av_len(run_group) + 1;
 
-     if (AB_DEBUG2) printf("AB_DEBUG: done with ab() initialization\n");
+    registry->order = malloc(registry->number_of_runs * sizeof(int));
+    registry->repeats = malloc(registry->number_of_runs * sizeof(int));
+    registry->position = malloc((registry->number_of_runs+1) * sizeof(int));
+    registry->memory = malloc(registry->number_of_runs * sizeof(int));
 
-     for (i = 0,j = 0; i < registry->number_of_runs; i++) {
-	 if (AB_DEBUG2) printf("AB_DEBUG: starting run %d setup\n", i);
+    if (AB_DEBUG2) printf("AB_DEBUG: done with ab() initialization\n");
 
-	 registry->repeats[i] = registry->repeat;
+    for (i = 0,j = 0; i < registry->number_of_runs; i++) {
+	if (AB_DEBUG2) printf("AB_DEBUG: starting run %d setup\n", i);
 
-	 tmpsv = *(av_fetch(run_group, i, 0));
-	 if (SvROK(tmpsv)) {
-	     tmphv = (HV *)SvRV(tmpsv);
-	     if (hv_exists(tmphv, "repeat", 6)) {
-		 /* Number of requests to make*/
-		 tmpsv = *(hv_fetch(tmphv, "repeat", 6, 0));
-		 registry->repeats[i] = SvIV(tmpsv);
-	     }
-	 }
+	tmpsv = *(av_fetch(run_group, i, 0));
 
-	 registry->requests = ap_max(registry->requests, registry->repeats[i]);
+	if (SvROK(tmpsv))
+	    tmphv = (HV *)SvRV(tmpsv);
 
-	 urls = *(hv_fetch(tmphv, "urls", 4, 0));
-	 tmpav = (AV *) SvRV(urls);
-	 registry->position[i] = registry->number_of_urls;
+	registry->memory[i] = def_memory;
+	if (hv_exists(tmphv, "memory", 6)) {
+	    tmpsv = *(hv_fetch(tmphv, "memory", 6, 0));
+	    registry->memory[i] = SvIV(tmpsv);
+	}
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d, position[%d] == %d\n", i, i, registry->position[i]);
+	registry->repeats[i] = def_repeat;
+	if (hv_exists(tmphv, "repeat", 6)) {
+	    /* Number of requests to make */
+	    tmpsv = *(hv_fetch(tmphv, "repeat", 6, 0));
+	    registry->repeats[i] = SvIV(tmpsv);
+	}
 
-	 registry->number_of_urls += av_len(tmpav) + 1;
+	registry->requests = ap_max(registry->requests, registry->repeats[i]);
 
-	 if (hv_exists(tmphv, "order", 5)) {
-	     tmpsv = *(hv_fetch(tmphv, "order", 5, 0));
-	     pt = SvPV(tmpsv, len);
-	     if (strcmp(pt, "depth_first") == 0) {
-		 registry->order[i] = DEPTH_FIRST;
-		 j += 1;
-	     } else if (strcmp(pt, "breadth_first") == 0) {
-		 registry->order[i] = BREADTH_FIRST;
-		 j += registry->repeats[i];
-	     } else {
-		 myerr(registry->warn_and_error, "invalid order: order can only be depth_first or breadth_first");
-		 registry->order[i] = BREADTH_FIRST;
-		 j += registry->repeats[i];
-	     }
-	 } else {
-	     registry->order[i] = BREADTH_FIRST;
-	     j += registry->repeats[i];
-	 }
-     }
-     if (registry->number_of_urls <= 0) {
-	 myerr(registry->warn_and_error, "No urls,");
-	 return;
-     }
-     registry->position[registry->number_of_runs] = registry->number_of_urls;
-     registry->concurrency = ap_min(registry->concurrency, j);
+	urls = *(hv_fetch(tmphv, "urls", 4, 0));
+	tmpav = (AV *) SvRV(urls);
+	registry->position[i] = registry->number_of_urls;
+	registry->number_of_urls += av_len(tmpav) + 1;
 
-     if (AB_DEBUG2) printf("AB_DEBUG: set all run info, ready to call initialize()\n");
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d: position[%d] == %d\n", i, i, registry->position[i]);
 
-     initialize(registry);
+	if (hv_exists(tmphv, "order", 5)) {
+	    tmpsv = *(hv_fetch(tmphv, "order", 5, 0));
+	    pt = SvPV(tmpsv, len);
+	    if (strcmp(pt, "depth_first") == 0) {
+		registry->order[i] = DEPTH_FIRST;
+		j += 1;
+	    } else if (strcmp(pt, "breadth_first") == 0) {
+		registry->order[i] = BREADTH_FIRST;
+		j += registry->repeats[i];
+	    } else {
+		myerr(registry->warn_and_error, "invalid order: order can only be depth_first or breadth_first");
+		registry->order[i] = BREADTH_FIRST;
+		j += registry->repeats[i];
+	    }
+	} else {
+	    registry->order[i] = BREADTH_FIRST;
+	    j += registry->repeats[i];
+	}
+    }
+    if (registry->number_of_urls <= 0) {
+	myerr(registry->warn_and_error, "No urls.");
+	return;
+    }
+    registry->position[registry->number_of_runs] = registry->number_of_urls;
+    registry->concurrency = ap_min(registry->concurrency, j);
 
-     url_keys = malloc(registry->number_of_urls * sizeof(char *));
+    if (AB_DEBUG2) printf("AB_DEBUG: set all run info, ready to call initialize()\n");
 
-     for (k = 0; k < registry->number_of_runs; k++) {
-	 if (AB_DEBUG2) printf("AB_DEBUG: starting run %d setup2 - postdata + cookie\n", k);
+    initialize(registry);
 
-	 registry->filesize[k] = def_filesize;
-	 tmpsv = *(av_fetch(run_group, k, 0));
-	 if (SvROK(tmpsv)) {
-	     tmphv = (HV *)SvRV(tmpsv);
-	     if (hv_exists(tmphv, "filesize", 8)) {
-		 tmpsv = *(hv_fetch(tmphv, "filesize", 8, 0));
-		 registry->filesize[k] = SvIV(tmpsv);
-	     }
-	 }
+    url_keys = malloc(registry->number_of_urls * sizeof(char *));
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 1\n", k);
+    for (k = 0; k < registry->number_of_runs; k++) {
+	if (AB_DEBUG2) printf("AB_DEBUG: starting run %d setup2 - postdata + cookie\n", k);
 
-	 urls = *(hv_fetch(tmphv, "urls", 4, 0));
-	 post_data = *(hv_fetch(tmphv, "postdata", 8, 0));
-	 cookies = *(hv_fetch(tmphv, "cookie", 6, 0));
-	 for (i = registry->position[k]; i < registry->position[k+1]; i++) {
-	     tmpav =(AV *) SvRV(urls);
-	     tmpsv = *(av_fetch(tmpav, i - registry->position[k], 0));
-	     if (SvPOK(tmpsv)) {
-		 pt = SvPV(tmpsv, len);
-		 url_keys[i] = pt;
+	registry->buffersize[k] = def_buffersize;
+	tmpsv = *(av_fetch(run_group, k, 0));
+	if (SvROK(tmpsv)) {
+	    tmphv = (HV *)SvRV(tmpsv);
+	    if (hv_exists(tmphv, "buffersize", 10)) {
+		tmpsv = *(hv_fetch(tmphv, "buffersize", 10, 0));
+		registry->buffersize[k] = SvIV(tmpsv);
+	    }
+	}
 
-		 if (parse_url(registry, pt, i)) {
-		     char *warn = malloc(1024);
-		     sprintf(warn, "Invalid url: %s, the information for this url may be wrong", pt);
-		     myerr(registry->warn_and_error, warn);
-		     free(warn);
-		 }
-	     } else {
-		 char *warn = malloc(1024);
-		 sprintf(warn, "Undefined url in urls list");
-		 myerr(registry->warn_and_error, warn);
-		 free(warn);
-	     }
-	 }
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 1\n", k);
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2\n", k);
+	/* error checking: make sure all of the run specific hashkeys exist */
+	if (hv_exists(tmphv, "urls", 4))
+	    urls = *(hv_fetch(tmphv, "urls", 4, 0));
+	if (hv_exists(tmphv, "postdata", 8))
+	    post_data = *(hv_fetch(tmphv, "postdata", 8, 0));
+	if (hv_exists(tmphv, "cookies", 7))
+	    cookies = *(hv_fetch(tmphv, "cookies", 7, 0));
+	if (hv_exists(tmphv, "content_types", 13))
+	    ctypes = *(hv_fetch(tmphv, "content_types", 13, 0));
 
-	 tmpav = (AV *) SvRV(post_data);
-	 i = ap_min(registry->position[k+1],
-		    registry->position[k] + av_len(tmpav) + 1);
+	/* configure urls */
+	for (i = registry->position[k]; i < registry->position[k+1]; i++) {
+	    tmpav =(AV *) SvRV(urls);
+	    tmpsv = *(av_fetch(tmpav, i - registry->position[k], 0));
+	    if (SvPOK(tmpsv)) {
+		pt = SvPV(tmpsv, len);
+		url_keys[i] = pt;
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.1\n", k);
+		if (parse_url(registry, pt, i)) {
+		    char *warn = malloc(1024);
+		    sprintf(warn, "Invalid url: %s, the information for this url may be wrong", pt);
+		    myerr(registry->warn_and_error, warn);
+		    free(warn);
+		}
+	    } else {
+		char *warn = malloc(1024);
+		sprintf(warn, "Undefined url in urls list");
+		myerr(registry->warn_and_error, warn);
+		free(warn);
+	    }
+	}
 
-	 for (j = registry->position[k]; j < i; j++) {
-	     if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.2, j=%d\n", k, j);
-	     tmpsv = *(av_fetch(tmpav, j - registry->position[k], 0));
-	     if (SvPOK(tmpsv)) {
-		 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.3, j=%d\n", k, j);
-		 pt = SvPV((SV *)tmpsv, len);
-		 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.4, j=%d\n", k, j);
-		 registry->postdata[j] = pt;
-		 registry->postlen[j] = registry->posting[j] = len;
-	     } else {
-		 registry->postlen[j] = registry->posting[j] = 0;
-	     }
-	     if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.5, j=%d\n", k, j);
-	 }
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2\n", k);
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 3\n", k);
+	/* find smaller of post_data array length and urls array length */
+	tmpav = (AV *) SvRV(post_data);
+	i = ap_min(registry->position[k+1],
+		   registry->position[k] + av_len(tmpav) + 1);
 
-	 for (j = i; j < registry->position[k+1]; j++) {
-	     registry->posting[j] = registry->postlen[j] = 0;
-	     /*If the number of postdata strings is less than
-	       that of urls,then assign empty strings*/
-	 }
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.1\n", k);
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4\n", k);
+	/* configure post_data */
+	for (j = registry->position[k]; j < i; j++) {
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.2, j=%d\n", k, j);
+	    tmpsv = *(av_fetch(tmpav, j - registry->position[k], 0));
+	    if (SvPOK(tmpsv)) {
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.3, j=%d\n", k, j);
+		pt = SvPV((SV *)tmpsv, len);
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.4, j=%d\n", k, j);
+		registry->postdata[j] = pt;
+		registry->postlen[j] = registry->posting[j] = len;
+	    } else {
+		registry->postlen[j] = registry->posting[j] = 0;
+	    }
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 2.5, j=%d\n", k, j);
+	}
 
-	 registry->cookie[k] = NULL;
-	 tmpav = (AV *) SvRV(cookies);
-	 if (av_len(tmpav) >= 0) {
-	     tmpsv = *(av_fetch(tmpav, 0, 0));
-	     if (SvPOK(tmpsv)) {
-		 pt = SvPV((SV *)tmpsv, len);
-		 if (len != 0) {
-		     registry->cookie[k] = malloc((len+11) * sizeof(char));
-		     strcpy(registry->cookie[k], "Cookie: ");
-		     strcat(registry->cookie[k], pt);
-		     strcat(registry->cookie[k], "\r\n");
-		     if (AB_DEBUG2) printf("AB_DEBUG: cookie[%d] == '%s'\n", k, registry->cookie[k]);
-		 }
-	     }
-	 }
-     }
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 3\n", k);
 
-     if (AB_DEBUG2) printf("AB_DEBUG: ready to test()\n");
+	/*If the number of postdata strings is less than
+	  that of urls, then assign empty strings*/
+	for (j = i; j < registry->position[k+1]; j++)
+	    registry->posting[j] = registry->postlen[j] = 0;
 
-     test(registry);
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4\n", k);
 
-     if (AB_DEBUG2) printf("AB_DEBUG: done with test()\n");
+	/* configure cookies */
+	registry->cookie[k] = NULL;
+	tmpav = (AV *) SvRV(cookies);
+	if (av_len(tmpav) >= 0) {
+	    tmpsv = *(av_fetch(tmpav, 0, 0));
+	    if (SvPOK(tmpsv)) {
+		pt = SvPV((SV *)tmpsv, len);
+		if (len != 0) {
+		    registry->cookie[k] = malloc((len+11) * sizeof(char));
+		    strcpy(registry->cookie[k], "Cookie: ");
+		    strcat(registry->cookie[k], pt);
+		    strcat(registry->cookie[k], "\r\n");
+		    if (AB_DEBUG2) printf("AB_DEBUG: cookie[%d] == '%s'\n", k, registry->cookie[k]);
+		}
+	    }
+	}
 
-     RETVAL = newHV();/* ready to get information stored in global variables */
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5\n", k);
 
-     for (k = 0; k < registry->number_of_runs; k++) {
-	 HV * run_hash = newHV();
-		          /* Store value for each thread */
-	 tmpav = newAV();   /* initial an array to keep the thread information */
+	/* find smaller of ctypes array length and urls array length */
+	tmpav = (AV *) SvRV(ctypes);
+	i = ap_min(registry->position[k+1],
+		   registry->position[k] + av_len(tmpav) + 1);
 
-	 if (AB_DEBUG2) printf("AB_DEBUG: getting regression info for run %d\n", k);
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5.1\n", k);
 
-	 for (i = 0; i < registry->repeats[k]; i++) {
-	     AV *th_t = newAV();  /* times for processing and connecting */
-	     AV *th_c = newAV();	  /* connecting times */
-	     AV *url_contents = newAV();  /* pages read from servers */
-	     AV *headers = newAV();
-	     tmphv = newHV();
+	/* configure ctypes */
+	for (j = registry->position[k]; j < i; j++) {
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5.2, j=%d\n", k, j);
+	    tmpsv = *(av_fetch(tmpav, j - registry->position[k], 0));
+	    if (SvPOK(tmpsv)) {
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5.3, j=%d\n", k, j);
+		pt = SvPV((SV *)tmpsv, len);
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5.4, j=%d\n", k, j);
+		registry->ctypes[j] = pt;
+	    } else {
+		registry->ctypes[j] = 0;
+	    }
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5.5, j=%d\n", k, j);
+	}
 
-	     for (j = registry->position[k]; j < registry->position[k+1]; j++) {
-		 av_push(th_t, newSVnv(registry->stats[j][i].time));
-		 av_push(th_c, newSVnv(registry->stats[j][i].ctime));
-		 av_push(url_contents, newSVpv(registry->stats[j][i].page_content,0));
-		 av_push(headers, newSVpv(registry->stats[j][i].header,0));
-	     }
+	/*If the number of ctypes strings is less than
+	  that of urls, then assign NULL (undef) */
+	for (j = i; j < registry->position[k+1]; j++)
+	    registry->ctypes[j] = 0;
+    }
 
-	     hv_store(tmphv, "total_time", 10, newRV_inc((SV *)th_t), 0);
-	     hv_store(tmphv, "connect_time", 12, newRV_inc((SV *)th_c), 0);
-	     hv_store(tmphv, "page_content", 12, newRV_inc((SV *)url_contents), 0);
-	     hv_store(tmphv, "headers", 7, newRV_inc((SV *)headers), 0);
-	     av_push(tmpav, newRV_inc((SV*)tmphv));
-	 }
+    if (AB_DEBUG2) printf("AB_DEBUG: ready to test()\n");
 
-	 hv_store(run_hash, "threads", 7, newRV_inc((SV *)tmpav), 0);
-		/* The end of store value for key "threads" */
+    test(registry);
 
-		/* Store information for each url now */
-	 for (i = registry->position[k]; i < registry->position[k+1]; i++) {
-	     int totalcon = 0, total = 0;
-	     int mincon = 9999999, mintot = 999999;
-	     int maxcon = 0, maxtot = 0;
+    if (AB_DEBUG2) printf("AB_DEBUG: done with test()\n");
 
-	     tmphv = newHV();
-	     for (j = 0; j < registry->repeats[k]; j++) {
-		 struct data s = registry->stats[i][j];
-		 mincon = ap_min(mincon, s.ctime);
-		 mintot = ap_min(mintot, s.time);
-		 maxcon = ap_max(maxcon, s.ctime);
-		 maxtot = ap_max(maxtot, s.time);
-		 totalcon += s.ctime;
-		 total += s.time;
-		 hv_store(tmphv, "max_connect_time", 16, newSVnv(maxcon), 0);
-		 hv_store(tmphv, "max_time", 8, newSVnv(maxtot), 0);
-		 hv_store(tmphv, "min_connect_time", 16, newSVnv(mincon), 0);
-		 hv_store(tmphv, "min_time", 8, newSVnv(mintot), 0);
-		 hv_store(tmphv, "average_connect_time", 20, newSVnv((float)totalcon/registry->repeats[k]), 0);
-		 hv_store(tmphv, "average_time", 12, newSVnv((double)total/registry->repeats[k]), 0);
-	     }
-	     hv_store(tmphv, "hostname", 8, newSVpv(registry->hostname[i],0), 0);
-	     hv_store(tmphv, "software", 8, newSVpv(registry->servername[i],0), 0);
-	     hv_store(tmphv, "port", 4, newSVnv(registry->port[0]), 0);
-	     hv_store(tmphv, "doc_length", 10, newSVnv(registry->doclen[i]), 0);
-	     hv_store(tmphv, "path", 4, newSVpv(registry->path[i],0), 0);
-	     hv_store(tmphv, "completed_requests", 18, newSVnv(registry->finished[i]), 0);
-	     hv_store(tmphv, "failed_requests", 15, newSVnv(registry->failed[i]), 0);
-	     hv_store(tmphv, "total_read", 10, newSVnv(registry->totalread[i]), 0);
-	     hv_store(tmphv, "page_content", 12, newSVpv(registry->page_content[i],0), 0);
-	     hv_store(tmphv, "header", 6, newSVpv(registry->stats[i][0].header,0), 0);
-	     if (registry->posting[i] > 0)
-		 hv_store(tmphv, "total_posted", 12, newSVnv(registry->totalposted[i]), 0);
-	     hv_store(run_hash, url_keys[i], strlen(url_keys[i]), newRV_inc((SV *)tmphv), 0);
-	 }
-	 {
-	     char key[10];
-	     sprintf(key, "run%d", k);
-	     hv_store(RETVAL, key, strlen(key), newRV_inc((SV *)run_hash), 0);
-	 }
-     }
-     hv_store(RETVAL, "warn", 4, newSVpv(registry->warn_and_error,0), 0);
-     hv_store(RETVAL, "total_time", 10, newSVnv(timedif(registry->endtime,registry->start)), 0);
-     hv_store(RETVAL, "bytes_received", 14, newSVnv(registry->total_bytes_received), 0);
+    RETVAL = newHV();/* ready to get information stored in global variables */
 
-     OUTPUT:
-     RETVAL
+    for (k = 0; k < registry->number_of_runs; k++) {
+	if (registry->memory[k] >= 1) {
+	    HV * run_hash = newHV();
+	    tmpav = newAV();	     /* array to keep the thread information */
+
+	    if (AB_DEBUG2) printf("AB_DEBUG: getting regression info for run %d\n", k);
+
+	    for (i = 0; i < registry->repeats[k]; i++) {
+		AV *th_t = newAV();  /* times for processing and connecting */
+		AV *th_r = newAV();  /* times for http request */
+		AV *th_c = newAV();	  /* connecting times */
+		AV *url_contents = newAV();  /* pages read from servers */
+		AV *headers = newAV();
+		AV *bytes_posted = newAV();
+		AV *doc_length = newAV();
+		AV *bytes_read = newAV();
+
+		/* variables for calculating min/max/avg times*/
+		int totalcon = 0, totalreq = 0, total = 0;
+		int mincon = 999999, minreq = 999999, mintot = 999999;
+		int maxcon = 0, maxreq = 0, maxtot = 0;
+
+		/* byte counters */
+		int total_bytes_posted = 0, total_bytes_read = 0;
+
+		for (j = registry->position[k]; j < registry->position[k+1]; j++) {
+		    struct data s = registry->stats[j][i];
+		    mincon = ap_min(mincon, s.ctime);
+		    minreq = ap_min(minreq, s.rtime);
+		    mintot = ap_min(mintot, s.time);
+		    maxcon = ap_max(maxcon, s.ctime);
+		    maxreq = ap_max(maxreq, s.rtime);
+		    maxtot = ap_max(maxtot, s.time);
+		    totalcon += s.ctime;
+		    totalreq += s.rtime;
+		    total += s.time;
+		    if (AB_DEBUG2) printf("AB_DEBUG: i,j=%d,%d: mintot=%d maxtot=%d total=%d\n", i, j, mintot, maxtot, total);
+
+		    total_bytes_posted += registry->totalposted[j];
+		    total_bytes_read += registry->stats[j][i].read;
+
+		    av_push(th_c, newSVnv(registry->stats[j][i].ctime));
+		    av_push(th_r, newSVnv(registry->stats[j][i].rtime));
+		    av_push(th_t, newSVnv(registry->stats[j][i].time));
+		    if (registry->memory[k] >= 2) {
+			av_push(headers, newSVpv(registry->stats[j][i].header, 0));
+			av_push(doc_length, newSVnv(registry->stats[j][i].bread));
+			av_push(bytes_read, newSVnv(registry->stats[j][i].read));
+			/*if (registry->posting[j] > 0)*/
+			av_push(bytes_posted, newSVnv(registry->totalposted[j]));
+		    }
+		    if (registry->memory[k] >= 3)
+			av_push(url_contents, newSVpv(registry->stats[j][i].page_content, 0));
+		}
+
+		tmphv = newHV();
+		hv_store(tmphv, "max_connect_time", 16, newSVnv(maxcon), 0);
+		hv_store(tmphv, "max_request_time", 16, newSVnv(maxreq), 0);
+		hv_store(tmphv, "max_response_time", 17, newSVnv(maxtot), 0);
+		hv_store(tmphv, "min_connect_time", 16, newSVnv(mincon), 0);
+		hv_store(tmphv, "min_request_time", 16, newSVnv(minreq), 0);
+		hv_store(tmphv, "min_response_time", 17, newSVnv(mintot), 0);
+		hv_store(tmphv, "total_connect_time", 18, newSVnv(totalcon), 0);
+		hv_store(tmphv, "total_request_time", 18, newSVnv(totalreq), 0);
+		hv_store(tmphv, "total_response_time", 19, newSVnv(total), 0);
+		hv_store(tmphv, "average_connect_time", 20, newSVnv((float)totalcon/(j-registry->position[k])), 0);
+		hv_store(tmphv, "average_request_time", 20, newSVnv((float)totalreq/(j-registry->position[k])), 0);
+		hv_store(tmphv, "average_response_time", 21, newSVnv((double)total/(j-registry->position[k])), 0);
+		hv_store(tmphv, "total_bytes_read", 16, newSVnv(total_bytes_read), 0);
+		hv_store(tmphv, "total_bytes_posted", 18, newSVnv(total_bytes_posted), 0);
+
+		hv_store(tmphv, "connect_time", 12, newRV_inc((SV *)th_c), 0);
+		hv_store(tmphv, "request_time", 12, newRV_inc((SV *)th_r), 0);
+		hv_store(tmphv, "response_time", 13, newRV_inc((SV *)th_t), 0);
+		if (registry->memory[k] >= 2) {
+		    hv_store(tmphv, "headers", 7, newRV_inc((SV *)headers), 0);
+		    hv_store(tmphv, "doc_length", 10, newRV_inc((SV *)doc_length), 0);
+		    hv_store(tmphv, "bytes_read", 10, newRV_inc((SV *)bytes_read), 0);
+		    hv_store(tmphv, "bytes_posted", 12, newRV_inc((SV *)bytes_posted), 0);
+		}
+		if (registry->memory[k] >= 3)
+		    hv_store(tmphv, "page_content", 12, newRV_inc((SV *)url_contents), 0);
+		av_push(tmpav, newRV_inc((SV*)tmphv));
+	    }
+	    {
+		char key[10];
+		sprintf(key, "run%d", k);
+		hv_store(RETVAL, key, strlen(key), newRV_inc((SV *)tmpav), 0);
+	    }
+	}
+    }
+
+    hv_store(RETVAL, "warnings", 8, newSVpv(registry->warn_and_error,0), 0);
+    hv_store(RETVAL, "total_time", 10,
+	     newSVnv(timedif(registry->endtime, registry->starttime)), 0);
+    hv_store(RETVAL, "bytes_received", 14,
+	     newSVnv(registry->total_bytes_received), 0);
+
+    OUTPUT:
+    RETVAL

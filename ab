@@ -29,44 +29,52 @@ my $n = $options{'n'} || 1;
 
 
 my $b = HTTPD::Bench::ApacheBench->new;
-$b->config({
-	    concurrency => $c,
-#	    priority    => "equal_opportunity",
-	   });
-$b->add({
-	 repeat    => $n,
-	 cookie    => [ $options{'C'} ],
-	 urls      => [ $ARGV[0] ],
-	 postdata  => [ $postdata ],
-	 order     => "depth_first",
-	});
-my $regr = $b->execute;
+$b->concurrency($c);
+my $r = HTTPD::Bench::ApacheBench::Run->new
+  ({
+    cookies   => [ $options{'C'} ],
+    urls      => [ map { $ARGV[0] } 1..$n ],
+    postdata  => [ map { $postdata } 1..$n ],
+    memory    => 2,
+   });
+$b->add_run($r);
 
-&show_results($regr);
+$b->execute;
+
+&show_results();
 
 
 sub show_results {
-    my ($regr) = @_;
-    my $url_data = $regr->{'run0'}->{$ARGV[0]};
-
-    my $html_size = $url_data->{'doc_length'} * $n;
-    my $time_in_sec = $regr->{'total_time'} / 1000;
+    my $time_in_sec = $b->total_time / 1000;
     my $hps = $n / $time_in_sec;
-    my $kps = $url_data->{'total_read'} / 1024 / $time_in_sec;
+    my $kps = $b->bytes_received / 1024 / $time_in_sec;
+
+    my $completed_requests = $b->total_responses_received;
+    my $failed_requests = $b->total_requests - $completed_requests;
+
+    my $doc_length = $r->response_body_lengths()->[0];
+    my $html_size = $n * $doc_length;
+    my $total_bytes_read = $r->sum_bytes_read();
+
+    my ($software) = ( $r->response_headers()->[0] =~ m/Server: (.*)/ );
+    my ($hostname) = ( $r->urls()->[0] =~ m,http://([^/:]+), );
+    my ($port) = ( $r->urls()->[0] =~ m,http://[^/:]+:(\d+), );
+    $port = 80 unless $port;
+    my ($path) = ( $r->urls()->[0] =~ m,http://[^/]+(/.*), );
 
     &show_version;
-    print qq`Server Software:        $url_data->{'software'}
-Server Hostname:        $url_data->{'hostname'}
-Server Port:            $url_data->{'port'}
+    print qq`Server Software:        $software
+Server Hostname:        $hostname
+Server Port:            $port
 
-Document Path:          $url_data->{'path'}
-Document Length:        $url_data->{'doc_length'} bytes
+Document Path:          $path
+Document Length:        $doc_length bytes
 
 Concurrency Level:      $c
 Time taken for tests:   $time_in_sec seconds
-Complete requests:      $url_data->{'completed_requests'}
-Failed requests:        $url_data->{'failed_requests'}
-Total transferred:      $url_data->{'total_read'} bytes
+Completed requests:     $completed_requests
+Failed requests:        $failed_requests
+Total transferred:      $total_bytes_read bytes
 HTML transferred:       $html_size bytes
 Requests per second:    $hps
 Transfer rate:          $kps kb/s received
@@ -74,23 +82,19 @@ Transfer rate:          $kps kb/s received
 Connnection Times (ms)
               min   avg   max
 Connect:   `.sprintf("%6d%6d%6d",
-		     $url_data->{'min_connect_time'},
-		     $url_data->{'average_connect_time'},
-		     $url_data->{'max_connect_time'}).qq`
-Processing:`.sprintf("%6d%6d%6d",
-		     $url_data->{'min_time'},
-		     $url_data->{'average_time'},
-		     $url_data->{'max_time'}).qq`
-Total:     `.sprintf("%6d%6d%6d",
-		     $url_data->{'min_time'}+ $url_data->{'min_connect_time'},
-		     $url_data->{'average_time'} + $url_data->{'average_connect_time'},
-		     $url_data->{'max_time'} + $url_data->{'max_connect_time'})
+		     $r->min_connect_time,
+		     $r->avg_connect_time,
+		     $r->max_connect_time).qq`
+Response:  `.sprintf("%6d%6d%6d",
+		     $r->min_response_time,
+		     $r->avg_response_time,
+		     $r->max_response_time)
   ."\n";
 }
 
 
 sub show_usage {
-    print q`Usage: ab [options] http://hostname[:port]/path
+    print qq`Usage: $0 [options] http://hostname[:port]/path
 Options are:
     -n requests     Number of requests to perform
     -c concurrency  Number of multiple requests to make
@@ -103,10 +107,10 @@ Options are:
 
 
 sub show_version {
-    print qq`This is ab implemented using the ApacheBench Perl API, version 0.1
+    print qq`This is ab implemented using the ApacheBench Perl API, version 0.2
 Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
 Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
-Copyright (c) 2000 Ling Wu, Adi Fairbank, http://www.adiraj.org/
+Copyright (c) 2000-2001 Ling Wu, Adi Fairbank, http://www.certsite.com/
 
 `;
 }

@@ -3,7 +3,7 @@
 use strict;
 use Test;
 
-BEGIN { plan tests => 7 }
+BEGIN { plan tests => 12 }
 
 use Term::ReadKey;
 use HTTPD::Bench::ApacheBench;
@@ -17,35 +17,52 @@ print STDERR "\n\nIt is rude to blast other people's servers, please enter local
 my (@urls, $url);
 do {
     print STDERR "Current \@urls: [" . join(", ", @urls) . "]\n";
-    print STDERR "Enter a URL to test, <ENTER> to quit: ";
+    print STDERR 'Type an HTTP URL to push, "P" to pop, "ENTER" when finished: ';
     $url = ReadLine(0);
     chomp $url;
-    push(@urls, $url) if $url;
+    if (lc($url) eq 'p') {
+	pop(@urls);
+    } elsif ($url) {
+	push(@urls, $url);
+    }
 } while ($url);
 
 print STDERR "How many times to repeat this sequence? ";
 my $n = ReadLine(0);
 chomp $n;
 
-$b->add({
-	 repeat       => $n,
-	 urls         => [ @urls ],
-	 order        => "depth_first",
-	});
-ok($b->{runs}->[0]->{repeat}, $n);
-ok($#{$b->{runs}->[0]->{urls}}, $#urls);
-ok($b->{runs}->[0]->{order}, "depth_first");
+my $run = HTTPD::Bench::ApacheBench::Run->new
+  ({ repeat   => $n,
+     urls     => [ @urls ],
+     order    => "depth_first" });
+ok(ref $run, "HTTPD::Bench::ApacheBench::Run");
 
-my $re;
-if (@urls) {
-    print STDERR "\nSending HTTP requests...\n";
-    $re = $b->execute;
-
-    print STDERR "\n" . $re->{'bytes_received'} . " bytes in " . $n*($#urls+1) . " requests received in " . $re->{'total_time'} . " ms\n";
-    print STDERR ($n*($#urls+1)*1000/$re->{'total_time'}) . " req/sec\n";
-    print STDERR ($re->{'bytes_received'}*1000/$re->{'total_time'}/1024) . " kb/sec\n";
+$b->add_run($run);
+ok($b->run(0), $run);
+if ($n) {
+    ok($b->run(0)->repeat, $n);
+} else {
+    skip(1, 1);
 }
+my $run0urls = $b->run(0)->urls;
+ok(ref $run0urls, "ARRAY");
+ok($#$run0urls, $#urls);
+ok($b->run(0)->order, "depth_first");
 
-ok(ref $re, "HASH");
-ok($re->{'total_time'});
-ok($re->{'bytes_received'});
+if (@urls) {
+    print STDERR "\nSending HTTP requests...\n\n";
+    my $rg = $b->execute;
+
+    print STDERR ($b->bytes_received." bytes, ".$b->total_responses_received.
+		  " responses received in " . $b->total_time . " ms\n");
+    print STDERR ($b->total_responses_received*1000/$b->total_time)." req/sec\n";
+    print STDERR ($b->bytes_received*1000/1024/$b->total_time) . " kb/sec\n";
+
+    ok(defined $b->total_responses_received);
+    ok(defined $b->total_time);
+    ok(defined $b->bytes_received);
+    ok(!defined $b->response_times);
+    ok(ref $rg->run(0)->iteration(0)->response_times, "ARRAY");
+} else {
+    foreach (1..5) { skip(1, 1) }
+}

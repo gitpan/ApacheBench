@@ -1,7 +1,11 @@
-1) add global option to not store any page content, in order
-   to reduce memory usage
-2) standardize the API to use only method calls, instead of
-   sending large hashes to config() and add(), and reading the
-   very large regression hash from execute()
-3) completely re-implement ab using Perl API (need to add some
+1) completely re-implement ab using Perl API (need to add some
    features like arbitrary HTTP request headers)
+2) take advantage of HTTP/1.1 keepalives to speed up requests
+3) implement with thread support so an execute() can send
+   independent sequences of HTTP requests concurrently without
+   waiting for all requests to finish in a round
+4) ApacheBench.xs badly needs a rewrite
+5) need a way to simulate real-world problems: for example
+  - slow dialup modem connections
+  - user-presses-stop, aka broken socket
+6) (re-)sending of individual runs, iterations within a run
