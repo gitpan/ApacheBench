@@ -1,0 +1,112 @@
+#!/usr/bin/perl
+
+use strict;
+use Getopt::Std;
+use ApacheBench;
+
+my %options;
+getopt('ncpC', \%options);
+getopts('V', \%options);
+
+if ($options{'V'}) {
+    &show_version;
+    exit;
+}
+if (!@ARGV) {
+    &show_usage;
+    exit;
+}
+
+my $postdata;
+if ($options{'p'}) {
+    open(FILE, $options{'p'});
+    $postdata = join('', <FILE>);
+    close FILE;
+}
+
+my $c = $options{'c'} || 1;
+my $n = $options{'n'} || 1;
+
+
+my $b = ApacheBench->new;
+$b->config({
+	    concurrency => $c,
+#	    priority    => "equal_opportunity",
+	   });
+$b->add({
+	 repeat    => $n,
+	 cookie    => [ $options{'C'} ],
+	 urls      => [ $ARGV[0] ],
+	 postdata  => [ $postdata ],
+	 order     => "depth_first",
+	});
+my $regr = $b->execute;
+
+&show_results($regr);
+
+
+sub show_results {
+    my ($regr) = @_;
+    my $url_data = $regr->{'run0'}->{$ARGV[0]};
+
+    my $html_size = $url_data->{'doc_length'} * $n;
+    my $time_in_sec = $regr->{'total_time'} / 1000;
+    my $hps = $n / $time_in_sec;
+    my $kps = $url_data->{'total_read'} / 1024 / $time_in_sec;
+
+    &show_version;
+    print qq`Server Software:        $url_data->{'software'}
+Server Hostname:        $url_data->{'hostname'}
+Server Port:            $url_data->{'port'}
+
+Document Path:          $url_data->{'path'}
+Document Length:        $url_data->{'doc_length'} bytes
+
+Concurrency Level:      $c
+Time taken for tests:   $time_in_sec seconds
+Complete requests:      $url_data->{'completed_requests'}
+Failed requests:        $url_data->{'failed_requests'}
+Total transferred:      $url_data->{'total_read'} bytes
+HTML transferred:       $html_size bytes
+Requests per second:    $hps
+Transfer rate:          $kps kb/s received
+
+Connnection Times (ms)
+              min   avg   max
+Connect:   `.sprintf("%6d%6d%6d",
+		     $url_data->{'min_connect_time'},
+		     $url_data->{'average_connect_time'},
+		     $url_data->{'max_connect_time'}).qq`
+Processing:`.sprintf("%6d%6d%6d",
+		     $url_data->{'min_time'},
+		     $url_data->{'average_time'},
+		     $url_data->{'max_time'}).qq`
+Total:     `.sprintf("%6d%6d%6d",
+		     $url_data->{'min_time'}+ $url_data->{'min_connect_time'},
+		     $url_data->{'average_time'} + $url_data->{'average_connect_time'},
+		     $url_data->{'max_time'} + $url_data->{'max_connect_time'})
+  ."\n";
+}
+
+
+sub show_usage {
+    print q`Usage: ab [options] http://hostname[:port]/path
+Options are:
+    -n requests     Number of requests to perform
+    -c concurrency  Number of multiple requests to make
+    -p postfile     File containg data to POST
+    -C attribute    Add cookie, eg. 'Apache=1234'
+    -V              Print version number and exit
+    -h              Display usage information (this message)
+`;
+}
+
+
+sub show_version {
+    print qq`This is ab implemented using the ApacheBench Perl API, version 0.1
+Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
+Copyright (c) 2000 Ling Wu, Adi Fairbank, http://www.adiraj.org/
+
+`;
+}

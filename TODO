@@ -1,0 +1,7 @@
+1) add global option to not store any page content, in order
+   to reduce memory usage
+2) standardize the API to use only method calls, instead of
+   sending large hashes to config() and add(), and reading the
+   very large regression hash from execute()
+3) completely re-implement ab using Perl API (need to add some
+   features like arbitrary HTTP request headers)
