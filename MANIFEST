@@ -9,6 +9,7 @@ ap_mmn.h
 ap_sha1.h
 C_Functions_Tree
 Changes
+get_headers
 INSTALL
 lib/HTTPD/Bench/ApacheBench.pm
 lib/HTTPD/Bench/ApacheBench/Regression.pm
@@ -18,6 +19,7 @@ Makefile.PL
 MANIFEST
 os.h
 os-inline.c
+os-win32.h
 README
 README.old
 README.upgrading_0.5x-0.6x

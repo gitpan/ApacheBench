@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-my $VERSION = "0.4";
+my $VERSION = "0.5";
 
 use strict;
 use Getopt::Std;
@@ -53,7 +53,8 @@ $b->add_run($run);
 $b->execute;
 
 &show_results();
-
+print "Response headers:\n";
+print $run->response_headers(0)."\n";
 
 sub min { my $min = shift; foreach (@_) {$min = $_ if $_ < $min} $min; }
 sub max { my $max = shift; foreach (@_) {$max = $_ if $_ > $max} $max; }
@@ -77,7 +78,7 @@ sub show_results {
     my ($hostname) = ( $run->urls()->[0] =~ m,(?:http://)?([^/:]+), );
     my ($port) = ( $run->urls()->[0] =~ m,(?:http://)?[^/:]+:(\d+), );
     $port = 80 unless $port;
-    my ($path) = ( $run->urls()->[0] =~ m,(?:http://)?[^/]+(/.*), );
+    my ($path) = ( $run->urls()->[0] =~ m,(?:http://)?[^/]+(.*), );
 
     &show_version;
     print qq`Server Software:        $software
@@ -135,7 +136,8 @@ sub show_version {
     print qq`This is ab implemented using the ApacheBench Perl API, version $VERSION
 Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
 Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
-Copyright (c) 2000-2001 Ling Wu, Adi Fairbank, http://www.certsite.com/
+Copyright (c) 2000-2002 Ling Wu, Adi Fairbank, http://www.certsite.com/
+Copyright (c) 2003-2004 Adi Fairbank, http://adiraj.org/
 
 `;
 }

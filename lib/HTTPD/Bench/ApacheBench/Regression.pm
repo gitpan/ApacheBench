@@ -89,7 +89,8 @@ sub iteration_value {
     my $iter = $reg->{'run'.$self->{'run_no'}}->[$iter_no];
     return undef unless (ref $iter eq "HASH" and
 			 (!$expect_ref or ref $iter->{$value} eq $expect_ref));
-    return $iter->{$value}->[$idx] if $expect_ref eq "ARRAY" and defined $idx;
+    return $iter->{$value}->[$idx]
+      if defined $expect_ref and $expect_ref eq "ARRAY" and defined $idx;
     return $iter->{$value};
 }
 

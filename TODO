@@ -12,3 +12,7 @@
 * perl subroutine hooks between requests in a sequence, with access
   to all prior regression data and ability to dynamically change current or
   future requests in sequence
+* XML configuration files, like Apache's flood project
+* more logicial object-based configuration; make a single request into an
+  object; try to replicate LWP: HTTP::Request and HTTP::Response
+* time-limit repeat feature: keep sending requests for NNN seconds

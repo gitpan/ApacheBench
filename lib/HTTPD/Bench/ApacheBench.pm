@@ -8,7 +8,7 @@ require DynaLoader;
 use HTTPD::Bench::ApacheBench::Run;
 use HTTPD::Bench::ApacheBench::Regression;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.62';
+$HTTPD::Bench::ApacheBench::VERSION = '0.63';
 @HTTPD::Bench::ApacheBench::ISA =
   qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 
@@ -231,7 +231,7 @@ HTTPD::Bench::ApacheBench - Perl API for Apache benchmarking and regression test
   my $ro = $b->execute;
 
   # calculate hits/sec
-  print (1000*$b->total_requests/$b->total_time)." req/sec\n";
+  print ((1000*$b->total_requests/$b->total_time)." req/sec\n");
 
   # show request times (in ms) for $run1, 1st repetition
   print join(', ', @{$run1->request_times}) . "\n";
@@ -890,6 +890,13 @@ for 1 <= $j <= size($run->urls()):
 
 =back
 
+=head1 HTTP Proxies
+
+ApacheBench can be used to make HTTP requests via an HTTP proxy.  To do so,
+one passes a "special" URI to the ApacheBench::Run constructor or urls
+method.  This special URI is of the form
+http://proxyserver:proxyport/http://realserver:realport/...
+
 =head1 EXAMPLES
 
 The following examples of ApacheBench usage are paired with the resulting
@@ -1057,12 +1064,16 @@ Perl output:
 ApacheBench/Perl has been tested and verified to work on the following
 platforms:
 
-  kernel       Perl version   compiler      architecture   distribution
-  ------       ------------   --------      ------------   ------------
-  FreeBSD 4.4  Perl 5.005_03  gcc 2.95.3    x86
-  Linux 2.2.x  Perl 5.005_03  egcs-2.91.66  x86            RedHat 6.2
-  Linux 2.4.x  Perl 5.6.0     gcc 2.96      x86            RedHat 7.1
-  SunOS 5.8    Perl 5.6.1     gcc 2.95.2    x86
+  kernel          Perl version   compiler             arch  distribution
+  ------          ------------   --------             ----  ------------
+  FreeBSD 4.4     Perl 5.005_03  gcc 2.95.3           x86
+  Linux 2.2.x     Perl 5.005_03  egcs-2.91.66         x86   RedHat 6.2
+  Linux 2.4.x     Perl 5.6.0     gcc 2.96             x86   RedHat 7.1
+  SunOS 5.8       Perl 5.6.1     gcc 2.95.2           x86
+  Darwin 6.0      Perl 5.6.0     *gcc 3.1 20020420    ppc   OS X 10.2, Jaguar
+  BSDI BSD/OS 4.2 Perl 5.005_03  gcc 2.95.2 19991024  x86   BSDI 4.2
+
+ * = Apple Computer, Inc. GCC version 1151, based on gcc version 3.1 20020420 (prerelease)
 
 Please send patches for ports to other platforms to me (Adi Fairbank).
 I have received numerous reports of segmentation faults on Solaris, but I
@@ -1084,6 +1095,9 @@ receiving.
 
 If you are running in perl's taint-checking mode, and you pass tainted data
 to ApacheBench (e.g. a tainted URL), it will barf.  Don't ask me why.
+
+HTTP Proxy support needs to be expanded to allow for a username and
+password.
 
 =head1 AUTHORS
 
@@ -1109,6 +1123,6 @@ terms of the Perl Artistic License
 
 =head1 LAST MODIFIED
 
-Dec 02, 2001
+Dec 15, 2002
 
 =cut

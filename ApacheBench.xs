@@ -133,7 +133,6 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
-#include <sys/ioctl.h>
 #include <string.h>
 
 #define ap_select       select
@@ -144,7 +143,7 @@
 #include "ebcdic.h"
 #endif
 #include <fcntl.h>
-#ifndef MPE
+#if !defined(MPE) && !defined(WIN32)
 #include <sys/time.h>
 #endif
 
@@ -162,7 +161,7 @@
 
 /* ------------------- DEFINITIONS -------------------------- */
 
-#define CBUFFSIZE        512
+#define CBUFFSIZE        4096
 #define WARN_BUFFSIZE   10240
 #define STATE_DONE 	  1
 #define STATE_READY 	  0
@@ -337,7 +336,7 @@ write_request(struct global * registry, struct connection * c) {
     printf("AB_DEBUG: write_request() - stage 2a.2, registry->done = %d\n", registry->done);
 #endif
     writev(c->fd, out, outcnt);
-#else
+#else /* NO_WRITEV */
 #ifdef AB_DEBUG
     printf("AB_DEBUG: write_request() - stage 2b.1, registry->done = %d\n", registry->done);
 #endif
@@ -345,7 +344,7 @@ write_request(struct global * registry, struct connection * c) {
     if (registry->posting[c->which] > 0) {
         ab_write(c->fd, registry->postdata[c->which], registry->postlen[c->which]);
     }
-#endif
+#endif /* NO_WRITEV */
 #ifdef AB_DEBUG
     printf("AB_DEBUG: write_request() - stage 3, registry->done = %d\n", registry->done);
 #endif
@@ -509,7 +508,6 @@ start_connect(struct global * registry, struct connection * c) {
     /* connected first time */
     registry->started[c->which]++;
     FD_SET(c->fd, &registry->writebits);
-  
 }
 
 /* --------------------------------------------------------- */
@@ -751,7 +749,8 @@ read_connection(struct global * registry, struct connection * c) {
 
     r = ab_read(c->fd, registry->buffer, sizeof(registry->buffer));
     if (r == 0 || (r < 0 && errno != EAGAIN)) {
-	registry->good[c->which]++;
+	if (errno == EINPROGRESS)
+	    registry->good[c->which]++;
 	close_connection(registry, c);
 	return;
     }
@@ -1156,34 +1155,63 @@ test(struct global * registry) {
 
 static int
 parse_url(struct global * registry, char *p, int i) {
-    char *cp;
-    char *h;
-    char *url = malloc(1024 * sizeof(char));
+    char *url = malloc((strlen(p)+1) * sizeof(char));
+    char *port, *tok, *tok2;
+
+    /* first, get a copy of url */
+    strcpy(url, p);
 
     /* remove http:// prefix if it exists */
-    if (strlen(p) > 7 && strncmp(p, "http://", 7) == 0)
-	p += 7;
+    if (strlen(url) > 7 && strncmp(url, "http://", 7) == 0)
+	url += 7;
 
-    strcpy(url, p);
-    h = url;
-    p = NULL;
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: parse_url() - stage 1\n");
+#endif
 
-    /* set port number if given by host:port */
-    if ((cp = strchr(url, ':')) != NULL) {
-	*cp++ = '\0';
-	p = cp;
-	url = cp;
+    /* first, extract the hostname and port */
+    tok = strtok(url, "/");
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: parse_url() - stage 2\n");
+#endif
+
+    /* the remaining part of url is just the uri */
+    tok2 = strtok(NULL, "");
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: parse_url() - stage 3\n");
+#endif
+
+    registry->hostname[i] = malloc((strlen(tok)+1) * sizeof(char));
+    strcpy(registry->hostname[i], strtok(tok, ":"));
+    if ((port = strtok(NULL, "")) != NULL)
+	registry->port[i] = atoi(port);
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: parse_url() - stage 4\n");
+#endif
+
+    /* if there is no uri, url was of the form http://host.name - assume / */
+    if (tok2 == NULL) {
+	registry->path[i] = "/";
+	return 0;
     }
-    if ((cp = strchr(url, '/')) == NULL){
-	registry->hostname[i] = registry->path[i] = h;
-	return 1;
-    }
-    registry->path[i] = malloc((strlen(cp)+1) * sizeof(char)); 
-    strcpy(registry->path[i], cp);
-    *cp = '\0';
-    registry->hostname[i] = h;
-    if (p != NULL)
-	registry->port[i] = atoi(p);
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: parse_url() - stage 5\n");
+#endif
+
+    /* need to allocate memory for uri */
+    registry->path[i] = malloc((strlen(tok2)+2) * sizeof(char));
+
+    /* only add leading / if not proxy request */
+    if (strncmp(tok2, "http://", 7) != 0) {
+	strcpy(registry->path[i], "/");
+	strcat(registry->path[i], tok2);
+    } else
+	strcpy(registry->path[i], tok2);
+
     return 0;
 }
 

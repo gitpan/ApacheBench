@@ -8,6 +8,23 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.63 - Oct 07, 2004
+
+bugfix hanging/infinitely repeating requests when HTTP response headers larger
+than 512 bytes: increased limit to 4096 bytes
+(thanks to John Fricker <jfricker@musiciansfriend.com> for patch)
+
+added 'get_headers' utility script that reads just the HTTP response headers
+from a given URL
+
+rewrote parse_url() function using strtok() calls; now also supports making
+http proxy requests (e.g. http://proxy.host:8080/http://destination.host/ )
+(proxy support submitted by Matthew H. Gerlach <mgerlach@lightsurf.com>)
+
+packaged in include file "hsregex.h" from Apache source distribution for
+WIN32 systems; still does not build on WIN32 however
+(spotted by Lee Goddard <Home@LeeGoddard.com>)
+
 =item 0.62 - Dec 02, 2001
 
 accurate tallying of sent, good, and failed requests; fixed incorrect

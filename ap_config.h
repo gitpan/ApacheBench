@@ -111,7 +111,10 @@ stat() properly */
 #define ENUM_BITFIELD(e,n,w)  e n : w
 #endif
 
+#ifndef WIN32
+/* This is the unix os.h include file: os/unix/os.h */
 #include "os.h"
+#endif
 
 /* Define one of these according to your system. */
 #if defined(MINT)
@@ -913,6 +916,7 @@ typedef int rlim_t;
 #elif defined(WIN32)
 
 /* All windows stuff is now in os/win32/os.h */
+#include "os-win32.h"
 
 #elif defined(TPF) /* IBM Transaction Processing Facility operating system */
 
