@@ -8,10 +8,36 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.61 - Oct 23, 2001
+
+new methods ready_to_execute() and prepare_for_execute() to
+eliminate segmentation faults due to configuration errors
+
+new feature that allows adding arbitrary extra HTTP request headers
+
+fixed bug that caused segmentation fault when custom Content-type: headers
+were specified for POST
+
+removed 512 byte hard-coded maximum size of HTTP requests; now requests can be
+arbitrarily large
+
+regression methods that returned arrayrefs now can be passed an optional index
+parameter to cause them to return the specified value out of the array
+
+fixed bug in ApacheBench.xs reset_request() for null cookies - bug
+caused ApacheBench-Perl not to work properly with virtual hosts because
+a null "\0" char was embedded in the HTTP request before the Host: line
+(spotted by Raju M. Daryanani <rajumd@geocities.com>)
+
+store all HTTP requests sent to server, accessed by request_body() method
+
+improved documentation for postdata() method, on suggestion
+from Scott Croco <scott.croco@lucasfilm.com>
+
 =item 0.60 - Feb 23, 2001
 
 restructured regression hash; will break some scripts;
-see README.upgrading_0.5x-0.60 for details
+see README.upgrading_0.5x-0.6x for details
 
 added new object-oriented API; see documentation for details
 

@@ -1,11 +1,11 @@
-1) completely re-implement ab using Perl API (need to add some
-   features like arbitrary HTTP request headers)
+1) completely re-implement ab using Perl API
 2) take advantage of HTTP/1.1 keepalives to speed up requests
 3) implement with thread support so an execute() can send
    independent sequences of HTTP requests concurrently without
    waiting for all requests to finish in a round
-4) ApacheBench.xs badly needs a rewrite
-5) need a way to simulate real-world problems: for example
+4) need a way to simulate real-world problems: for example
   - slow dialup modem connections
   - user-presses-stop, aka broken socket
-6) (re-)sending of individual runs, iterations within a run
+5) (re-)sending of individual runs, iterations within a run
+6) bring up-to-date with current Apache distribution ab.c
+  - including SSL support

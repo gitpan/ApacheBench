@@ -5,7 +5,7 @@ use Getopt::Std;
 use HTTPD::Bench::ApacheBench;
 
 my %options;
-getopt('ncpC', \%options);
+getopt('ncpCHT', \%options);
 getopts('V', \%options);
 
 if ($options{'V'}) {
@@ -30,14 +30,20 @@ my $n = $options{'n'} || 1;
 
 my $b = HTTPD::Bench::ApacheBench->new;
 $b->concurrency($c);
-my $r = HTTPD::Bench::ApacheBench::Run->new
+my $run = HTTPD::Bench::ApacheBench::Run->new
   ({
-    cookies   => [ $options{'C'} ],
-    urls      => [ map { $ARGV[0] } 1..$n ],
-    postdata  => [ map { $postdata } 1..$n ],
+    urls      => [ $ARGV[0] ],
+    repeat    => $n,
     memory    => 2,
    });
-$b->add_run($r);
+$run->cookies([ $options{'C'} ]);
+$run->postdata([ $postdata ]);
+$run->content_types([ $options{'T'} ]);
+# need to kludge H option because of weaknesses in Getopt::Std
+#  (can't handle multiple identical options)
+$options{'H'} =~ s/\\r\\n/\r\n/g;
+$run->request_headers([ $options{'H'} ]);
+$b->add_run($run);
 
 $b->execute;
 
@@ -52,15 +58,15 @@ sub show_results {
     my $completed_requests = $b->total_responses_received;
     my $failed_requests = $b->total_requests - $completed_requests;
 
-    my $doc_length = $r->response_body_lengths()->[0];
+    my $doc_length = $run->response_body_lengths()->[0];
     my $html_size = $n * $doc_length;
-    my $total_bytes_read = $r->sum_bytes_read();
+    my $total_bytes_read = $n * $run->sum_bytes_read();
 
-    my ($software) = ( $r->response_headers()->[0] =~ m/Server: (.*)/ );
-    my ($hostname) = ( $r->urls()->[0] =~ m,http://([^/:]+), );
-    my ($port) = ( $r->urls()->[0] =~ m,http://[^/:]+:(\d+), );
+    my ($software) = ( $run->response_headers()->[0] =~ m/Server: (.*)/ );
+    my ($hostname) = ( $run->urls()->[0] =~ m,http://([^/:]+), );
+    my ($port) = ( $run->urls()->[0] =~ m,http://[^/:]+:(\d+), );
     $port = 80 unless $port;
-    my ($path) = ( $r->urls()->[0] =~ m,http://[^/]+(/.*), );
+    my ($path) = ( $run->urls()->[0] =~ m,http://[^/]+(/.*), );
 
     &show_version;
     print qq`Server Software:        $software
@@ -82,14 +88,14 @@ Transfer rate:          $kps kb/s received
 Connnection Times (ms)
               min   avg   max
 Connect:   `.sprintf("%6d%6d%6d",
-		     $r->min_connect_time,
-		     $r->avg_connect_time,
-		     $r->max_connect_time).qq`
+		     $run->min_connect_time,
+		     $run->avg_connect_time,
+		     $run->max_connect_time).qq`
 Response:  `.sprintf("%6d%6d%6d",
-		     $r->min_response_time,
-		     $r->avg_response_time,
-		     $r->max_response_time)
-  ."\n";
+		     $run->min_response_time,
+		     $run->avg_response_time,
+		     $run->max_response_time)
+  ."\n\n" . $b->warnings;
 }
 
 
@@ -99,7 +105,11 @@ Options are:
     -n requests     Number of requests to perform
     -c concurrency  Number of multiple requests to make
     -p postfile     File containg data to POST
+    -T content-type Content-type header for POSTing
     -C attribute    Add cookie, eg. 'Apache=1234'
+    -H attribute    Add Arbitrary header line, eg. 'Accept-Encoding: zop'
+                    Inserted after all normal header lines.
+                    (separate multiple headers with "\\r\\n")
     -V              Print version number and exit
     -h              Display usage information (this message)
 `;
@@ -107,7 +117,7 @@ Options are:
 
 
 sub show_version {
-    print qq`This is ab implemented using the ApacheBench Perl API, version 0.2
+    print qq`This is ab implemented using the ApacheBench Perl API, version 0.3
 Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
 Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
 Copyright (c) 2000-2001 Ling Wu, Adi Fairbank, http://www.certsite.com/

@@ -1,0 +1,7 @@
+INSTALLATION
+
+  perl Makefile.PL
+  make
+  make test           (requires Term::ReadKey for execute() test)
+  make install
+

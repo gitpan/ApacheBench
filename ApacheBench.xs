@@ -210,6 +210,7 @@ struct data {
     int rtime;			/* time in ms for http request */
     int time;			/* time in ms for full req/resp interval */
     char *page_content;
+    char *request_body;
     char *header;
 };
 
@@ -235,6 +236,7 @@ struct global {
 
     int *posting;		/* GET if posting[]=0 */
     char **postdata, **cookie;	/* datas for post and optional cookie line */
+    char **req_headers;		/* optional arbitrary request headers to add */
     int *postlen;		/* length of data to be POSTed */
     int *totalposted;		/* total number of bytes posted, inc. headers*/
 
@@ -259,8 +261,8 @@ struct global {
     int total_bytes_received;
     struct timeval starttime, endtime;
 
-    /* global request (and its length) */
-    char request[512];
+    /* buffer for HTTP requests */
+    char *request;
     int reqlen;
 
     /* one global throw-away buffer to read stuff into */
@@ -287,7 +289,7 @@ myerr(char *warn_and_error, char *s) {
 	strcat(warn_and_error,"\n[Warn:] ");
 	strcat(warn_and_error,s);
     } else if(strlen(warn_and_error) < 2014)
-	strcat(warn_and_error,"\nToo much warn and error message!");
+	strcat(warn_and_error,"\nToo many warn and error messages!");
 }
 
 /* --------------------------------------------------------- */
@@ -422,7 +424,7 @@ start_connect(struct global * registry, struct connection * c) {
 	printf("AB_DEBUG: start_connect() - stage 3\n");
 #endif
 	if (!he) {
-	    char * warn = malloc(1024);
+	    char * warn = malloc(512);
 	    sprintf(warn, "Bad hostname: %s, the information stored for it could be wrong!", registry->hostname[c->which]);
 	    myerr(registry->warn_and_error, warn);
 	    free(warn);
@@ -480,15 +482,32 @@ start_connect(struct global * registry, struct connection * c) {
 
 static void
 close_connection(struct global * registry, struct connection * c) {
-    if (c->read >= registry->buffersize[c->run])
-	myerr(registry->warn_and_error,
-	      "Buffer size is too small, only part of the page stored!");
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: start of close_connection()\n");
+#endif
+
+    if (c->read >= registry->buffersize[c->run] &&
+	registry->memory[c->run] >= 3) {
+	char * warn = malloc(512);
+	sprintf(warn, "[run %d, iter %d, req %d]: Buffer size of %d is too small, got response of size %d", c->run, c->thread, c->which, registry->buffersize[c->run], c->read);
+	myerr(registry->warn_and_error, warn);
+	free(warn);
+    }
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: close_connection() - stage 1\n");
+#endif
+
     if (c->read == 0) {
 	if (registry->memory[c->run] >= 3)
 	    c->page_content = "";
 	if (registry->memory[c->run] >= 2)
 	    c->header = "";
     }
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 2\n");
+#endif
 
     {
 	struct data s;
@@ -504,10 +523,28 @@ close_connection(struct global * registry, struct connection * c) {
 	    s.bread = c->bread;
 	    s.header = c->header;
 	}
-	if (registry->memory[c->run] >= 3)
+	if (registry->memory[c->run] >= 3) {
 	    s.page_content = c->page_content;
+	    if (registry->posting[c->which] > 0) {
+		s.request_body =
+		    malloc((strlen(registry->request)+
+			    strlen(registry->postdata[c->which])+1) *
+			   sizeof(char));
+		strcpy(s.request_body, registry->request);
+		strcat(s.request_body, registry->postdata[c->which]);
+	    } else {
+		s.request_body =
+		    malloc((strlen(registry->request)+1) * sizeof(char));
+		strcpy(s.request_body, registry->request);
+	    }
+	}
+
 	registry->stats[c->which][c->thread] = s;
     }
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 3\n");
+#endif
 
     registry->total_bytes_received += c->read;
     registry->finished[c->which]++;
@@ -515,8 +552,16 @@ close_connection(struct global * registry, struct connection * c) {
     FD_CLR(c->fd, &registry->readbits);
     FD_CLR(c->fd, &registry->writebits);
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 4\n");
+#endif
+
     if (++registry->done >= registry->need_to_be_done)
 	return;
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 5\n");
+#endif
 
     if (registry->priority == RUN_PRIORITY) {
 	if (registry->started[registry->position[c->run + 1] - 1] >= registry->repeats[c->run]) {
@@ -643,6 +688,10 @@ static void
 read_connection(struct global * registry, struct connection * c) {
     int r;
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: start of read_connection()\n");
+#endif
+
     r = ab_read(c->fd, registry->buffer, sizeof(registry->buffer));
     if (r == 0 || (r < 0 && errno != EAGAIN)) {
 	registry->good[c->which]++;
@@ -650,12 +699,21 @@ read_connection(struct global * registry, struct connection * c) {
 	return;
     }
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 1\n");
+#endif
+
     if (r < 0 && errno == EAGAIN)
 	return;
     c->read += r;
     if (c->read < registry->buffersize[c->run]-1 &&
 	registry->memory[c->run] >= 3)
 	strncat(c->page_content, registry->buffer, r);
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: read_connection() - stage 2\n");
+#endif
+
     if (!c->gotheader) {
 	char *s;
 	int l = 4;
@@ -713,44 +771,75 @@ read_connection(struct global * registry, struct connection * c) {
     /* setup or reset request */
 int
 reset_request(struct global * registry, int i, int j) {
-    char *ctype = malloc(40);
-    ctype = "application/x-www-form-urlencoded";
+    char * ctype = malloc(40 * sizeof(char));
+    strcpy(ctype, "application/x-www-form-urlencoded");
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: reset_request() - stage 0.1\n");
+#endif
     if (registry->ctypes[i]) {
+#ifdef AB_DEBUG
+	printf("AB_DEBUG: reset_request() - stage 0.1.1\n");
+#endif
 	free(ctype);
+
+#ifdef AB_DEBUG
+	printf("AB_DEBUG: reset_request() - stage 0.1.2\n");
+#endif
 	ctype = registry->ctypes[i];
     }
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: reset_request() - stage 1\n");
+#endif
+
     if (registry->posting[i] <= 0) {
+#ifdef AB_DEBUG
+	printf("AB_DEBUG: reset_request() - stage 1.1 (GET)\n");
+#endif
 	sprintf(registry->request, "%s %s HTTP/1.0\r\n"
 		"User-Agent: ApacheBench-Perl/%s\r\n"
-		"%s"
 		"Host: %s\r\n"
-		"Accept: */*\r\n"
-		"\r\n",
+		"Accept: */*\r\n",
 		(registry->posting[i] == 0) ? "GET" : "HEAD",
 		registry->path[i],
 		VERSION,
-		registry->cookie[j],
 		registry->hostname[i]);
     } else {
+#ifdef AB_DEBUG
+	printf("AB_DEBUG: reset_request() - stage 1.1 (POST)\n");
+#endif
 	sprintf(registry->request, "POST %s HTTP/1.0\r\n"
 		"User-Agent: ApacheBench-Perl/%s\r\n"
-		"%s"
 		"Host: %s\r\n"
 		"Accept: */*\r\n"
 		"Content-length: %d\r\n"
-		"Content-type: %s\r\n"
-		"\r\n",
+		"Content-type: %s\r\n",
 		registry->path[i],
 		VERSION,
-		registry->cookie[j],
 		registry->hostname[i],
 		registry->postlen[i],
 		ctype);
     }
 
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: reset_request() - stage 2\n");
+#endif
+
+    if (registry->cookie[j])
+	sprintf(registry->request, "%sCookie: %s\r\n",
+		registry->request, registry->cookie[j]);
+    if (registry->req_headers[i]) {
+	strcat(registry->request, registry->req_headers[i]);
+	strcat(registry->request, "\r\n");
+    }
+
+    strcat(registry->request, "\r\n");
     registry->reqlen = strlen(registry->request);
+
+#ifdef AB_DEBUG
+    printf("AB_DEBUG: reset_request() - stage 3\n");
+#endif
 
 #ifdef CHARSET_EBCDIC
     ebcdic2ascii(registry->request, registry->request, registry->reqlen);
@@ -890,7 +979,7 @@ test(struct global * registry) {
 #endif
 
     gettimeofday(&registry->endtime, 0);
-    if (strlen(registry->warn_and_error) == 25)
+    if (strlen(registry->warn_and_error) == 28)
 	myerr(registry->warn_and_error, "None.\n");
     else myerr(registry->warn_and_error, "Done.\n");
 }
@@ -905,7 +994,7 @@ static int
 parse_url(struct global * registry, char *p, int i) {
     char *cp;
     char *h;
-    char *url = malloc(1024);
+    char *url = malloc(1024 * sizeof(char));
 
     /* remove http:// prefix if it exists */
     if (strlen(p) > 7 && strncmp(p, "http://", 7) == 0)
@@ -914,6 +1003,8 @@ parse_url(struct global * registry, char *p, int i) {
     strcpy(url, p);
     h = url;
     p = NULL;
+
+    /* set port number if given by host:port */
     if ((cp = strchr(url, ':')) != NULL) {
 	*cp++ = '\0';
 	p = cp;
@@ -974,6 +1065,7 @@ initialize(struct global * registry) {
     registry->path = malloc(registry->number_of_urls * sizeof(char *));
     registry->port = malloc(registry->number_of_urls * sizeof(int));
     registry->ctypes = malloc(registry->number_of_urls * sizeof(char *));
+    registry->req_headers = malloc(registry->number_of_urls * sizeof(char *));
 				/* default port number */
     registry->started = malloc(registry->number_of_urls * sizeof(int));
     registry->finished = malloc(registry->number_of_urls * sizeof(int));
@@ -1007,7 +1099,7 @@ ab(input_hash)
     int def_buffersize; /* default buffersize for all runs */
     int def_repeat; /* default number of repeats if unspecified in runs */
     int def_memory; /* default memory setting if unspecified in runs */
-    struct global *registry = malloc(sizeof(struct global));
+    struct global *registry = calloc(1, sizeof(struct global));
 
     CODE:
     SV * runs;
@@ -1015,6 +1107,7 @@ ab(input_hash)
     SV * post_data;
     SV * cookies;
     SV * ctypes;
+    SV * req_headers;
     AV * run_group, *tmpav;
     SV * tmpsv;
     HV * tmphv;
@@ -1027,7 +1120,7 @@ ab(input_hash)
     registry->tail = 0;
     registry->done = 0;
     registry->need_to_be_done = 0;
-    strcpy(registry->warn_and_error, "\nWarning message from ab.");
+    strcpy(registry->warn_and_error, "\nWarning messages from ab():");
     registry->total_bytes_received = 0;
     registry->err_length = 0;
     registry->err_conn = 0;
@@ -1042,6 +1135,9 @@ ab(input_hash)
 
     tmpsv = *(hv_fetch(tmphv, "buffersize", 10, 0));
     def_buffersize = SvIV(tmpsv);
+
+    tmpsv = *(hv_fetch(tmphv, "request_buffersize", 18, 0));
+    registry->request = malloc(SvIV(tmpsv) * sizeof(char));
 
     tmpsv = *(hv_fetch(tmphv, "repeat", 6, 0));
     def_repeat = SvIV(tmpsv);
@@ -1156,6 +1252,8 @@ ab(input_hash)
 	    cookies = *(hv_fetch(tmphv, "cookies", 7, 0));
 	if (hv_exists(tmphv, "content_types", 13))
 	    ctypes = *(hv_fetch(tmphv, "content_types", 13, 0));
+	if (hv_exists(tmphv, "request_headers", 15))
+	    req_headers = *(hv_fetch(tmphv, "request_headers", 15, 0));
 
 	/* configure urls */
 	for (i = registry->position[k]; i < registry->position[k+1]; i++) {
@@ -1207,7 +1305,7 @@ ab(input_hash)
 	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 3\n", k);
 
 	/*If the number of postdata strings is less than
-	  that of urls, then assign empty strings*/
+	  that of urls, then assign empty strings to force GET requests*/
 	for (j = i; j < registry->position[k+1]; j++)
 	    registry->posting[j] = registry->postlen[j] = 0;
 
@@ -1221,14 +1319,41 @@ ab(input_hash)
 	    if (SvPOK(tmpsv)) {
 		pt = SvPV((SV *)tmpsv, len);
 		if (len != 0) {
-		    registry->cookie[k] = malloc((len+11) * sizeof(char));
-		    strcpy(registry->cookie[k], "Cookie: ");
-		    strcat(registry->cookie[k], pt);
-		    strcat(registry->cookie[k], "\r\n");
+		    registry->cookie[k] = malloc((len+1) * sizeof(char));
+		    strcpy(registry->cookie[k], pt);
 		    if (AB_DEBUG2) printf("AB_DEBUG: cookie[%d] == '%s'\n", k, registry->cookie[k]);
 		}
 	    }
 	}
+
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1\n", k);
+
+	/* find smaller of req_headers array length and urls array length */
+	tmpav = (AV *) SvRV(req_headers);
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.1\n", k);
+	i = ap_min(registry->position[k+1],
+		   registry->position[k] + av_len(tmpav) + 1);
+
+	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.2\n", k);
+	/* configure arbitrary request headers */
+	for (j = registry->position[k]; j < i; j++) {
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.3, j=%d\n", k, j);
+	    tmpsv = *(av_fetch(tmpav, j - registry->position[k], 0));
+	    if (SvPOK(tmpsv)) {
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.4, j=%d\n", k, j);
+		pt = SvPV((SV *)tmpsv, len);
+		if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.5, j=%d\n", k, j);
+		registry->req_headers[j] = pt;
+	    } else {
+		registry->req_headers[j] = 0;
+	    }
+	    if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 4.1.6, j=%d\n", k, j);
+	}
+
+	/*If the number of req_headers strings is less than
+	  that of urls, then assign NULL (undef) */
+	for (j = i; j < registry->position[k+1]; j++)
+	    registry->req_headers[j] = 0;
 
 	if (AB_DEBUG2) printf("AB_DEBUG: run %d setup2 - stage 5\n", k);
 
@@ -1279,7 +1404,8 @@ ab(input_hash)
 		AV *th_t = newAV();  /* times for processing and connecting */
 		AV *th_r = newAV();  /* times for http request */
 		AV *th_c = newAV();	  /* connecting times */
-		AV *url_contents = newAV();  /* pages read from servers */
+		AV *url_contents = newAV(); /* pages read from servers */
+		AV *request_body = newAV(); /* HTTP requests sent to servers */
 		AV *headers = newAV();
 		AV *bytes_posted = newAV();
 		AV *doc_length = newAV();
@@ -1319,8 +1445,10 @@ ab(input_hash)
 			/*if (registry->posting[j] > 0)*/
 			av_push(bytes_posted, newSVnv(registry->totalposted[j]));
 		    }
-		    if (registry->memory[k] >= 3)
+		    if (registry->memory[k] >= 3) {
 			av_push(url_contents, newSVpv(registry->stats[j][i].page_content, 0));
+			av_push(request_body, newSVpv(registry->stats[j][i].request_body, 0));
+		    }
 		}
 
 		tmphv = newHV();
@@ -1348,8 +1476,10 @@ ab(input_hash)
 		    hv_store(tmphv, "bytes_read", 10, newRV_inc((SV *)bytes_read), 0);
 		    hv_store(tmphv, "bytes_posted", 12, newRV_inc((SV *)bytes_posted), 0);
 		}
-		if (registry->memory[k] >= 3)
+		if (registry->memory[k] >= 3) {
 		    hv_store(tmphv, "page_content", 12, newRV_inc((SV *)url_contents), 0);
+		    hv_store(tmphv, "request_body", 12, newRV_inc((SV *)request_body), 0);
+		}
 		av_push(tmpav, newRV_inc((SV*)tmphv));
 	    }
 	    {

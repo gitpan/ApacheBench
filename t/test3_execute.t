@@ -3,7 +3,7 @@
 use strict;
 use Test;
 
-BEGIN { plan tests => 12 }
+BEGIN { plan tests => 18 }
 
 use Term::ReadKey;
 use HTTPD::Bench::ApacheBench;
@@ -16,7 +16,7 @@ print STDERR "\n\nIt is rude to blast other people's servers, please enter local
 
 my (@urls, $url);
 do {
-    print STDERR "Current \@urls: [" . join(", ", @urls) . "]\n";
+    print STDERR "Current \@urls: (" . join(", ", @urls) . ")\n";
     print STDERR 'Type an HTTP URL to push, "P" to pop, "ENTER" when finished: ';
     $url = ReadLine(0);
     chomp $url;
@@ -44,10 +44,27 @@ if ($n) {
 } else {
     skip(1, 1);
 }
+
 my $run0urls = $b->run(0)->urls;
 ok(ref $run0urls, "ARRAY");
 ok($#$run0urls, $#urls);
 ok($b->run(0)->order, "depth_first");
+ok($b->run(0)->cookies(['cookie=monster;']));
+ok($b->run(0)->request_headers([map {"Accept-Encoding: text/html"} @urls]));
+
+# we make two identical runs except the first will GET and the second will POST
+my $run2 = HTTPD::Bench::ApacheBench::Run->new
+  ({ repeat   => $n,
+     urls     => [ @urls ],
+     postdata => [ map {"post"} @urls ],
+     order    => "depth_first" });
+$b->add_run($run2);
+ok($b->run(1), $run2);
+
+my $run1urls = $b->run(1)->urls;
+ok(ref $run1urls, "ARRAY");
+ok($#$run1urls, $#urls);
+ok($b->run(1)->content_types([map {"text/plain"} @urls]));
 
 if (@urls) {
     print STDERR "\nSending HTTP requests...\n\n";

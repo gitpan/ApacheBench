@@ -1,4 +1,4 @@
-This is ApacheBench version 0.60, the Perl API for Apache
+This is ApacheBench version 0.61, the Perl API for Apache
 benchmarking and regression testing.
 
 This project is meant to be the foundation of a complete
@@ -16,10 +16,10 @@ ApacheBench is based on the Apache 1.3.12 ab code
 Please see the POD for complete details.
 
 NOTE: For people upgrading from 0.5x, please see the file
-README.upgrading_0.5x-0.60.  There have been changes
+README.upgrading_0.5x-0.6x.  There have been changes
 to the API, so your scripts based on 0.5x will not work
-with 0.60 unless you make some modifications to them.
+with 0.6x unless you make some modifications to them.
 
 Adi Fairbank
 adi@certsite.com
-February 23, 2001
+October 23, 2001

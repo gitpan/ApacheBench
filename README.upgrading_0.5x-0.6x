@@ -1,9 +1,9 @@
-ApacheBench Perl API changes - ver 0.60
+ApacheBench Perl API changes - ver 0.6x
 
 The ApacheBench Perl API has changed since versions 0.5x, such that
-scripts that use the 0.5x API will not work correctly using 0.60.
+scripts that use the 0.5x API will not work correctly using 0.6x.
 I apologize for the forced upgrade, but the 0.5x API was non-intuitive
-and buggy.  The new 0.60 API will remain stable from now on.  Any future
+and buggy.  The new 0.6x API will remain stable from now on.  Any future
 changes will be accompanied by backwards compatibility fixes.
 
 To upgrade scripts that were written for ApacheBench 0.5x:
