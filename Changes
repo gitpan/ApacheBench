@@ -8,6 +8,24 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.62 - Dec 02, 2001
+
+accurate tallying of sent, good, and failed requests; fixed incorrect
+total_requests_sent(), total_responses_received() methods, and added new
+total_responses_failed() method and per-run sent_requests(), good_responses(),
+and failed_responses() methods
+
+added support for global and per-url/per-run time limits
+
+updated header files from Apache 1.3.22 src/include/
+
+added support for HTTP HEAD requests per-url/per-run
+
+fixed a small bug that sent a GET request for a defined-but-empty string value
+in postdata() array; now it sends a POST request with Content-length: 0
+
+added support for HTTP KeepAlive feature on global or per-url/per-run basis
+
 =item 0.61 - Oct 23, 2001
 
 new methods ready_to_execute() and prepare_for_execute() to

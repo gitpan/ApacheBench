@@ -53,11 +53,15 @@ ok($b->run(0)->cookies(['cookie=monster;']));
 ok($b->run(0)->request_headers([map {"Accept-Encoding: text/html"} @urls]));
 
 # we make two identical runs except the first will GET and the second will POST
+# and HEAD; the second run also uses the HTTP Keep-Alive feature
 my $run2 = HTTPD::Bench::ApacheBench::Run->new
   ({ repeat   => $n,
      urls     => [ @urls ],
-     postdata => [ map {"post"} @urls ],
      order    => "depth_first" });
+$run2->postdata([ map {"post"} 0..($#urls/2) ]);
+$run2->head_requests([ (map {undef} 0..($#urls/2)),
+		       (map {1} ($#urls/2+1)..$#urls) ]);
+$run2->keepalive([map {1} @urls]);
 $b->add_run($run2);
 ok($b->run(1), $run2);
 

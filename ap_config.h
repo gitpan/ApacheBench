@@ -1,58 +1,59 @@
 /* ====================================================================
- * Copyright (c) 1995-1999 The Apache Group.  All rights reserved.
+ * The Apache Software License, Version 1.1
+ *
+ * Copyright (c) 2000 The Apache Software Foundation.  All rights
+ * reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer. 
+ *    notice, this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
  *    the documentation and/or other materials provided with the
  *    distribution.
  *
- * 3. All advertising materials mentioning features or use of this
- *    software must display the following acknowledgment:
- *    "This product includes software developed by the Apache Group
- *    for use in the Apache HTTP server project (http://www.apache.org/)."
+ * 3. The end-user documentation included with the redistribution,
+ *    if any, must include the following acknowledgment:
+ *       "This product includes software developed by the
+ *        Apache Software Foundation (http://www.apache.org/)."
+ *    Alternately, this acknowledgment may appear in the software itself,
+ *    if and wherever such third-party acknowledgments normally appear.
  *
- * 4. The names "Apache Server" and "Apache Group" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For written permission, please contact
- *    apache@apache.org.
+ * 4. The names "Apache" and "Apache Software Foundation" must
+ *    not be used to endorse or promote products derived from this
+ *    software without prior written permission. For written
+ *    permission, please contact apache@apache.org.
  *
- * 5. Products derived from this software may not be called "Apache"
- *    nor may "Apache" appear in their names without prior written
- *    permission of the Apache Group.
+ * 5. Products derived from this software may not be called "Apache",
+ *    nor may "Apache" appear in their name, without prior written
+ *    permission of the Apache Software Foundation.
  *
- * 6. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by the Apache Group
- *    for use in the Apache HTTP server project (http://www.apache.org/)."
- *
- * THIS SOFTWARE IS PROVIDED BY THE APACHE GROUP ``AS IS'' AND ANY
- * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE APACHE GROUP OR
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED.  IN NO EVENT SHALL THE APACHE SOFTWARE FOUNDATION OR
  * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
  * ====================================================================
  *
  * This software consists of voluntary contributions made by many
- * individuals on behalf of the Apache Group and was originally based
- * on public domain software written at the National Center for
- * Supercomputing Applications, University of Illinois, Urbana-Champaign.
- * For more information on the Apache Group and the Apache HTTP server
- * project, please see <http://www.apache.org/>.
+ * individuals on behalf of the Apache Software Foundation.  For more
+ * information on the Apache Software Foundation, please see
+ * <http://www.apache.org/>.
  *
+ * Portions of this software are based upon public domain software
+ * originally written at the National Center for Supercomputing Applications,
+ * University of Illinois, Urbana-Champaign.
  */
 
 #ifndef AP_CONFIG_H
@@ -79,7 +80,7 @@ extern "C" {
 #undef HAVE_UNISTD_H
 #endif
 
-/* Have to include sys/stat.h before ../os/win32/os.h so we can override
+/* Have to include sys/stat.h before ../win32/os.h so we can override
 stat() properly */
 #ifndef NETWARE
 #include <sys/types.h>
@@ -110,18 +111,14 @@ stat() properly */
 #define ENUM_BITFIELD(e,n,w)  e n : w
 #endif
 
-#ifdef WIN32
-#include "../os/win32/os.h"
-#else
 #include "os.h"
-#endif
 
 /* Define one of these according to your system. */
 #if defined(MINT)
 typedef int rlim_t;
 #define JMP_BUF sigjmp_buf
 #define NO_LONG_DOUBLE
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define _BSD_SOURCE
 #define EAGAIN EWOULDBLOCK
 int initgroups (char *, int);     
@@ -135,8 +132,16 @@ int gethostname (char *name, int namelen);
 #define NO_WRITEV
 #define HAVE_SHMGET 1
 #define USE_SHMGET_SCOREBOARD
-#define SHM_R 0400  /* Read permission */
-#define SHM_W 0200  /* Write permission */
+/* 
+   UID/GID isn't a native concept for MPE, and it's definitely not a 100%
+   Unix implementation.  There isn't a traditional superuser concept either,
+   so we're forced to liberalize SHM security a bit so the parent & children
+   can communicate when they're running with different UIDs within the same
+   GID (the GID will *always* be the same on MPE).  Thus the weird SHM_R and
+   SHM_W below.
+*/
+#define SHM_R 0440  /* Read permission */
+#define SHM_W 0220  /* Write permission */
 #define NEED_INITGROUPS
 #define NEED_STRCASECMP
 #define NEED_STRDUP
@@ -149,6 +154,7 @@ extern char *inet_ntoa();
 #define S_IREAD  S_IRUSR
 #define S_IWRITE S_IWUSR
 #define PF_INET  AF_INET
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 
 #elif defined(SUNOS4)
 #define HAVE_GMTOFF 1
@@ -164,7 +170,7 @@ char *mktemp(char *);
 typedef int rlim_t;
 #define memmove(a,b,c) bcopy(b,a,c)
 #define NO_LINGCLOSE
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define NEED_DIFFTIME
 #define HAVE_SYSLOG 1
 
@@ -173,6 +179,9 @@ typedef int rlim_t;
 #define NO_KILLPG
 #undef NO_SETSID
 #define bzero(a,b) memset(a,0,b)
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_PTHREAD_SERIALIZED_ACCEPT
 #if !defined(USE_SYSVSEM_SERIALIZED_ACCEPT) && \
     !defined(USE_PTHREAD_SERIALIZED_ACCEPT)
 #define USE_FCNTL_SERIALIZED_ACCEPT
@@ -191,6 +200,10 @@ int gethostname(char *name, int namelen);
  * there's some weird conflict with non-BSD signals */
 #define NO_KILLPG
 #undef NO_SETSID
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_USLOCK_SERIALIZED_ACCEPT
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
 #if !defined(USE_FLOCK_SERIALIZED_ACCEPT) && \
     !defined(USE_USLOCK_SERIALIZED_ACCEPT) && \
     !defined(USE_SYSVSEM_SERIALIZED_ACCEPT)
@@ -220,7 +233,7 @@ int gethostname(char *name, int namelen);
 #undef HAVE_GMTOFF
 #define NO_KILLPG
 #undef NO_SETSID
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #ifndef _HPUX_SOURCE
 #define _HPUX_SOURCE
 #endif
@@ -239,12 +252,12 @@ typedef int rlim_t;
 #define HAVE_SHMGET
 #define USE_SHMGET_SCOREBOARD
 #undef  HAVE_GMTOFF
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 /* feeling brave?  want to try using POSIX mutexes? */
 /* #define HAVE_MMAP */
 /* #define USE_MMAP_SCOREBOARD */
 /* #define USE_MMAP_FILES */
-/* #define USE_PTHREAD_SERIALIZED_ACCEPT */
+/* #define HAVE_PTHREAD_SERIALIZED_ACCEPT */
 #define NO_KILLPG
 #undef  NO_SETSID
 #define HAVE_SYSLOG
@@ -268,7 +281,12 @@ typedef int rlim_t;
 #ifdef NEED_RLIM_T
 typedef int rlim_t;
 #endif
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
+#define NEED_UNION_SEMUN
+#if !defined(USE_PTHREAD_SERIALIZED_ACCEPT)
 #define USE_FCNTL_SERIALIZED_ACCEPT
+#endif
 #ifdef USEBCOPY
 #define memmove(a,b,c) bcopy(b,a,c)
 #endif
@@ -299,7 +317,7 @@ typedef int rlim_t;
 #define USE_MMAP_FILES
 #define NO_LONG_DOUBLE
 #define HAVE_SYSLOG 1
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
 
 #elif defined(PARAGON)
@@ -321,7 +339,7 @@ typedef int rlim_t;
 #define HAVE_SYSLOG 1
 #define USE_MMAP_FILES 1
 #define USE_MMAP_SCOREBOARD 1
-#define USE_FCNTL_SERIALIZED_ACCEPT 1
+#define HAVE_FCNTL_SERIALIZED_ACCEPT 1
 #define JMP_BUF sigjmp_buf
 #undef NO_SETSID
 #if SEQUENT < 40
@@ -404,19 +422,14 @@ typedef int pid_t;
 #define NO_USE_SIGACTION
 #define HAVE_SYSLOG 1
 
-
 #if defined(__DYNAMIC__)
 #define HAVE_DYLD
 #define DYLD_CANT_UNLOAD
 #endif
 
-#elif defined(MAC_OS) || defined(MAC_OS_X_SERVER) /* Mac OS (>= 10.0) and Mac OS X Server (<= 5.x) */
+#elif defined(DARWIN) /* Darwin (Mac OS) */
 #undef PLATFORM
-#ifdef MAC_OS_X_SERVER
-#define PLATFORM "Mac OS X Server"
-#else
-#define PLATFORM "Mac OS"
-#endif
+#define PLATFORM "Darwin"
 #define HAVE_DYLD
 #define HAVE_GMTOFF
 #define HAVE_MMAP
@@ -429,57 +442,10 @@ typedef int pid_t;
 #define HAVE_SNPRINTF
 #define JMP_BUF jmp_buf
 #define USE_LONGJMP
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define USE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
-/*
- * If you are using APACI, (you probably should be on Mac OS) these
- * values are set at configure time.
- */
-#ifndef HTTPD_ROOT
-#define HTTPD_ROOT              "/Local/Library/WebServer"
-#endif
-#ifndef DOCUMENT_LOCATION
-#define DOCUMENT_LOCATION       HTTPD_ROOT "/Documents"
-#endif
-#ifndef DEFAULT_XFERLOG
-#define DEFAULT_XFERLOG         "Logs/Access"
-#endif
-#ifndef DEFAULT_ERRORLOG
-#define DEFAULT_ERRORLOG        "Logs/Errors"
-#endif
-#ifndef DEFAULT_PIDLOG
-#define DEFAULT_PIDLOG          "Logs/Process"
-#endif
-#ifndef DEFAULT_SCOREBOARD
-#define DEFAULT_SCOREBOARD      "Logs/Status"
-#endif
-#ifndef DEFAULT_LOCKFILE
-#define DEFAULT_LOCKFILE        "Logs/Lock"
-#endif
-#ifndef SERVER_CONFIG_FILE
-#define SERVER_CONFIG_FILE      "Configuration/Server"
-#endif
-#ifndef RESOURCE_CONFIG_FILE
-#define RESOURCE_CONFIG_FILE    "Configuration/Resources"
-#endif
-#ifndef TYPES_CONFIG_FILE
-#define TYPES_CONFIG_FILE       "Configuration/MIME"
-#endif
-#ifndef ACCESS_CONFIG_FILE
-#define ACCESS_CONFIG_FILE      "Configuration/Access"
-#endif
-#ifndef DEFAULT_USER_DIR
-#define DEFAULT_USER_DIR        "Library/Web Documents"
-#endif
-#ifndef DEFAULT_USER
-#define DEFAULT_USER            "www"
-#endif
-#ifndef DEFAULT_GROUP
-#define DEFAULT_GROUP           "www"
-#endif
-#ifndef DEFAULT_PATH
-#define DEFAULT_PATH            "/bin:/usr/bin:/usr/local/bin"
-#endif
 
 #elif defined(LINUX)
 
@@ -516,12 +482,19 @@ typedef int pid_t;
 #define HAVE_MMAP 1
 #define USE_MMAP_FILES
 
-/* flock is faster ... but hasn't been tested on 1.x systems */
-/* PR#3531 indicates flock() may not be stable, probably depends on
- * kernel version.  Go back to using fcntl, but provide a way for
- * folks to tweak their Configuration to get flock.
+#if LINUX > 20
+/* see Pine.LNX.4.21.0011041233550.1897-100000@twinlark.arctic.org
+ * in new-httpd archives for performance numbers indicating these
+ * are the right choices for linux 2.2.x and later
  */
-#ifndef USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define SINGLE_LISTEN_UNSERIALIZED_ACCEPT 
+#include <sys/sem.h>
+#if _SEM_SEMUN_UNDEFINED
+#define NEED_UNION_SEMUN
+#endif
+#else
 #define USE_FCNTL_SERIALIZED_ACCEPT
 #endif
 
@@ -553,9 +526,29 @@ typedef int rlim_t;
 #define HAVE_SYSLOG 1
 #undef HAVE_SYS_RESOURCE_H
 
+#elif defined(ATHEOS)
+
+#include <features.h>
+#include <crypt.h>
+#include <sys/time.h>
+
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define USE_FCNTL_SERIALIZED_ACCEPT
+
+#undef HAVE_GMTOFF
+#undef NO_KILLPG
+#undef NO_SETSID
+#undef NEED_STRDUP
+#define HAVE_SYSLOG 1
+
+#ifdef PLATFORM
+#undef PLATFORM
+#endif
+#define PLATFORM "AtheOS"
+
 #elif defined(SCO5)
 
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define HAVE_MMAP 1
 #define USE_MMAP_SCOREBOARD
 #define USE_MMAP_FILES
@@ -587,7 +580,7 @@ extern char *crypt();
 #undef NO_SETSID
 #define NEED_STRDUP
 /* fcntl() locking is expensive with NFS */
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
 #define HAVE_SHMGET 1
 #define USE_SHMGET_SCOREBOARD
@@ -616,6 +609,10 @@ extern char *crypt();
 #endif /* MPRAS */
 #define bzero(a,b) memset(a,0,b)
 /* A lot of SVR4 systems need this */
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#ifdef SNI
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
+#endif
 #ifndef USE_SYSVSEM_SERIALIZED_ACCEPT
 #define USE_FCNTL_SERIALIZED_ACCEPT
 #endif
@@ -633,7 +630,7 @@ extern char *crypt();
 
 #elif defined(UW)
 #if UW < 700
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define NO_LINGCLOSE
 #define NO_KILLPG
 #endif
@@ -667,7 +664,7 @@ extern char *crypt();
 #endif
 #define bzero(a,b) memset(a,0,b)
 /* A lot of SVR4 systems need this */
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define ap_inet_addr inet_network
 #define HAVE_SYSLOG 1
 
@@ -686,7 +683,7 @@ extern char *crypt();
 #define HAVE_MMAP 1
 #define USE_MMAP_SCOREBOARD
 #define USE_MMAP_FILES
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
 
 #elif defined(UTS21)
@@ -740,10 +737,13 @@ extern char *crypt();
 (defined(__FreeBSD_version) && (__FreeBSD_version < 220000))
 typedef quad_t rlim_t;
 #endif
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
 #define HAVE_SYSLOG 1
 #define SYS_SIGLIST sys_siglist
+#if (defined(__FreeBSD_version) && (__FreeBSD_version >= 400000))
+#define NET_SIZE_T socklen_t
+#endif
 
 #elif defined(QNX)
 #ifndef crypt
@@ -763,7 +763,7 @@ int initgroups(char *, int);
 #include <unix.h>
 #define HAVE_MMAP 1
 #define USE_POSIX_SCOREBOARD
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
 #define HAVE_SYSLOG 1
 
@@ -771,8 +771,9 @@ int initgroups(char *, int);
 #undef HAVE_GMTOFF
 #undef USE_MMAP_SCOREBOARD
 #undef USE_SHMGET_SCOREBOARD
-#undef USE_FCNTL_SERIALIZED_ACCEPT
-#undef USE_FLOCK_SERIALIZED_ACCEPT
+#undef HAVE_FCNTL_SERIALIZED_ACCEPT
+#undef HAVE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_NONE_SERIALIZED_ACCEPT
 #define USE_LONGJMP
 #undef NO_KILLPG
 #undef NO_SETSID
@@ -790,7 +791,7 @@ typedef int rlim_t;
 #define NO_KILLPG
 #undef NO_SETSID
 #define bzero(a,b) memset(a,0,b)
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define HAVE_MMAP 1
 #define USE_MMAP_SCOREBOARD
 #define USE_MMAP_FILES
@@ -811,8 +812,9 @@ typedef int rlim_t;
 #define MAXSOCKETS 2048
 #define USE_OS2_SCOREBOARD
 #define NO_RELIABLE_PIPED_LOGS
-#define USE_OS2SEM_SERIALIZED_ACCEPT
+#define HAVE_OS2SEM_SERIALIZED_ACCEPT
 #define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+#define NO_SLACK
 #define FOPEN_REQUIRES_T
 
 #elif defined(__MACHTEN__)
@@ -824,7 +826,7 @@ typedef int rlim_t;
 #ifndef __MACHTEN_68K__
 #define __MACHTEN_68K__
 #endif
-#define USE_FLOCK_SERIALIZED_ACCEPT
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
 #define NO_USE_SIGACTION
 #define JMP_BUF sigjmp_buf
 #define USE_LONGJMP
@@ -832,7 +834,7 @@ typedef int rlim_t;
 #else
 #define HAVE_SHMGET 1
 #define USE_SHMGET_SCOREBOARD
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #endif
 
 /* Convex OS v11 */
@@ -857,7 +859,7 @@ typedef int rlim_t;
 #undef NO_SETSID
 #define HAVE_SHMGET 1
 #define USE_SHMGET_SCOREBOARD
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
 #define HAVE_SYSLOG 1
 
 #elif defined(NEWSOS)
@@ -886,11 +888,22 @@ typedef int rlim_t;
 #define NEED_STRDUP
 
 #elif defined(BEOS)
+#undef PLATFORM
+#define PLATFORM "BeOS"
 #include <stddef.h>
 
 #define NO_WRITEV
 #define NO_KILLPG
 #define NEED_INITGROUPS
+#define PF_INET AF_INET
+#define S_IEXEC S_IXUSR
+
+#elif defined(BONE)
+#undef PLATFORM
+#define PLATFORM "BeOS BONE"
+#define NO_KILLPG
+#define NEED_INITGROUPS
+#define S_IEXEC S_IXUSR
 
 #elif defined(_CX_SX)
 #define JMP_BUF sigjmp_buf
@@ -921,7 +934,6 @@ typedef int rlim_t;
 #define NEED_STRDUP
 #define NO_DBM_REWRITEMAP
 #define NO_GETTIMEOFDAY
-#define NO_KILLPG
 #define NO_LINGCLOSE
 #define NO_MMAP
 #define NO_OTHER_CHILD
@@ -932,15 +944,15 @@ typedef int rlim_t;
 #define NO_TIMES
 #define NO_USE_SIGACTION
 #define USE_LONGJMP
-/*#define USE_SHMGET_SCOREBOARD*/
+#define USE_SHMGET_SCOREBOARD
+/*#define USE_TPF_SCOREBOARD*/
 #define USE_TPF_ACCEPT
-#define USE_TPF_CORE_SERIALIZED_ACCEPT
-/*#define USE_TPF_DAEMON*/
-#define USE_TPF_SCOREBOARD
+#define HAVE_TPF_CORE_SERIALIZED_ACCEPT
 #define USE_TPF_SELECT
 #define S_IREAD S_IRUSR
 #define S_IWRITE S_IWUSR
 #define S_IEXEC S_IXUSR
+#include <unistd.h>
 #define crypt(buf,salt) ((char *)buf)
 #undef  offsetof
 #define offsetof(s_type,field) ((size_t)&(((s_type*)0)->field))
@@ -956,7 +968,8 @@ typedef int rlim_t;
 #define HAVE_SHMGET
 #define USE_SHMGET_SCOREBOARD
 #define USE_MMAP_FILES
-#define USE_FCNTL_SERIALIZED_ACCEPT
+#define NEED_UNION_SEMUN
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
 #define _POSIX_SOURCE
 #include <signal.h>
 #ifdef SIGDUMP  /* SIGDUMP is not defined by OS/390 v1r2 */
@@ -976,6 +989,19 @@ typedef int rlim_t;
 #include <sys/socket.h>
 #define NET_SIZE_T size_t
 #define NEED_HASHBANG_EMUL
+
+#elif defined(CYGWIN)               /* Cygwin 1.x POSIX layer for Win32 */
+#define JMP_BUF jmp_buf
+#define NO_KILLPG
+#define USE_LONGJMP
+#define GDBM_STATIC
+#define HAVE_MMAP 1
+#define USE_MMAP_SCOREBOARD
+#define USE_MMAP_FILES
+#define HAVE_SYSLOG 1
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#define SINGLE_LISTEN_UNSERIALIZED_ACCEPT
+
 
 #else
 /* Unknown system - Edit these to match */
@@ -1029,12 +1055,12 @@ typedef int rlim_t;
 #define CORE_EXPORT_NONSTD	API_EXPORT_NONSTD
 #endif
 
-/* On Mac OS X Server, symbols that conflict with loaded dylibs
+/* On Darwin, symbols that conflict with loaded dylibs
  * (eg. System framework) need to be declared as private symbols with
  * __private_extern__.
  * For other systems, make that a no-op.
  */
-#if (defined(MAC_OS) || defined(MAC_OS_X_SERVER)) && defined(__DYNAMIC__)
+#if defined(DARWIN) && defined(__DYNAMIC__)
 #define ap_private_extern __private_extern__
 #else
 #define ap_private_extern
@@ -1130,7 +1156,7 @@ typedef int rlim_t;
 #undef NSIG
 #endif
 #include <errno.h>
-#if !defined(QNX) && !defined(CONVEXOS11) && !defined(NEXT) && !defined(TPF) && !defined(NETWARE)
+#if !defined(QNX) && !defined(CONVEXOS11) && !defined(NEXT) && !defined(TPF) && !defined(NETWARE) && !defined(MPE)
 #include <memory.h>
 #endif
 
@@ -1138,9 +1164,7 @@ typedef int rlim_t;
 #include <process.h>
 #endif
 
-#ifdef WIN32
-#include "../include/hsregex.h"
-#elif defined(USE_HSREGEX)
+#if defined(WIN32) || defined(USE_HSREGEX)
 #include "hsregex.h"
 #else
 #include <regex.h>
@@ -1173,6 +1197,32 @@ int setrlimit(int, struct rlimit *);
 
 #if defined(USE_SHMGET_SCOREBOARD) && (defined(NO_SHMGET) || !defined(HAVE_SHMGET))
 #undef USE_SHMGET_SCOREBOARD
+#endif
+
+/* A USE_FOO_SERIALIZED_ACCEPT implies a HAVE_FOO_SERIALIZED_ACCEPT */
+#if defined(USE_USLOCK_SERIALIZED_ACCEPT) && !defined(HAVE_USLOCK_SERIALIZED_ACCEPT)
+#define HAVE_USLOCK_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_PTHREAD_SERIALIZED_ACCEPT) && !defined(HAVE_PTHREAD_SERIALIZED_ACCEPT)
+#define HAVE_PTHREAD_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_SYSVSEM_SERIALIZED_ACCEPT) && !defined(HAVE_SYSVSEM_SERIALIZED_ACCEPT)
+#define HAVE_SYSVSEM_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_FCNTL_SERIALIZED_ACCEPT) && !defined(HAVE_FCNTL_SERIALIZED_ACCEPT)
+#define HAVE_FCNTL_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_FLOCK_SERIALIZED_ACCEPT) && !defined(HAVE_FLOCK_SERIALIZED_ACCEPT)
+#define HAVE_FLOCK_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_OS2SEM_SERIALIZED_ACCEPT) && !defined(HAVE_OS2SEM_SERIALIZED_ACCEPT)
+#define HAVE_OS2SEM_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_TPF_CORE_SERIALIZED_ACCEPT) && !defined(HAVE_TPF_CORE_SERIALIZED_ACCEPT)
+#define HAVE_TPF_CORE_SERIALIZED_ACCEPT
+#endif
+#if defined(USE_NONE_SERIALIZED_ACCEPT) && !defined(HAVE_NONE_SERIALIZED_ACCEPT)
+#define HAVE_NONE_SERIALIZED_ACCEPT
 #endif
 
 #ifndef LOGNAME_MAX
@@ -1232,7 +1282,7 @@ Sigfunc *signal(int signo, Sigfunc * func);
 #endif
 
 /* Majority of os's want to verify FD_SETSIZE */
-#if !defined(WIN32) && !defined(TPF)
+#if !defined(WIN32) && !defined(TPF) && !defined(NETWARE)
 #define CHECK_FD_SETSIZE
 #endif
 
@@ -1404,7 +1454,7 @@ int gethostname(char *name, int namelen);
 void syslog(int, char *,...);
 char *mktemp(char *);
 
-long vfprintf(FILE *, const char *, va_list);
+int vfprintf(FILE *, const char *, va_list);
 
 #endif /* SUNOS_LIB_PROTOTYPES */
 

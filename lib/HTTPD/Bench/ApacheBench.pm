@@ -8,7 +8,7 @@ require DynaLoader;
 use HTTPD::Bench::ApacheBench::Run;
 use HTTPD::Bench::ApacheBench::Regression;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.61';
+$HTTPD::Bench::ApacheBench::VERSION = '0.62';
 @HTTPD::Bench::ApacheBench::ISA =
   qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 
@@ -33,8 +33,10 @@ sub initialize {
     my ($self) = @_;
     $self->{runs} = [] if ref $self->{runs} ne "ARRAY";
     $self->{concurrency} = 1 unless $self->{concurrency};
+    $self->{timelimit} = undef unless defined $self->{timelimit};
     $self->{repeat} = 1 unless $self->{repeat};
     $self->{priority} = "equal_opportunity" unless $self->{priority};
+    $self->{keepalive} = 0 unless defined $self->{keepalive};
     $self->{buffersize} = 16384 unless $self->{buffersize};
     $self->{request_buffersize} = 2048 unless $self->{request_buffersize};
     $self->{memory} = 1 unless defined $self->{memory};
@@ -73,6 +75,18 @@ sub repeat {
     my ($self, $arg) = @_;
     $self->{repeat} = $arg if $arg;
     return $self->{repeat};
+}
+
+sub keepalive {
+    my ($self, $arg) = @_;
+    $self->{keepalive} = $arg if $arg;
+    return $self->{keepalive};
+}
+
+sub timelimit {
+    my ($self, $arg) = @_;
+    $self->{timelimit} = $arg if $arg;
+    return $self->{timelimit};
 }
 
 sub buffersize {
@@ -245,7 +259,8 @@ ApacheBench is based on the Apache 1.3.12 ab code (src/support/ab.c).
 Note: although this tool was designed to be used on an Apache mod_perl
 site, it is generally applicable to any HTTP-compliant server.  Beware,
 however, that it sends a high volume of HTTP requests in a very short period
-of time, which may overwhelm some weaker HTTP server platforms like NT/IIS.
+of time, which may overwhelm some weaker HTTP server implementations
+like NT/IIS.
 
 =head1 DESCRIPTION
 
@@ -277,7 +292,7 @@ with this ApacheBench object.
 
 =item $b = HTTPD::Bench::ApacheBench->new()
 
-Constructor.  Takes no arguments.
+Constructor.
 
 =item $b->concurrency( $concur_level )
 
@@ -294,7 +309,7 @@ and sent in parallel (the level of parallelism defined by concurrency()).
 
 If set to "B<run_priority>", the benchmark runs that are configured first
 get the highest priority.  This means all requests in $b->run(0) will
-be sent before any requests in $b->run(1) are sent, if
+be sent before any requests in $b->run(1) are sent, provided that
 $b->run(0)->order eq "B<breadth_first>" (see below).
 
 See L<"EXAMPLES"> near the bottom of this manual for a tutorial on the
@@ -308,6 +323,35 @@ The number of times to repeat the request sequence in each run.
 This can be overridden on a per-run basis (see below).
 
 (default: B<1>)
+
+=item $b->keepalive( 0|1 )
+
+Whether or not to use HTTP Keep-Alive feature for requests configured in this
+object.  This can be overridden on a per-url/per-run basis (see below).
+
+B<Warning>: If you configure runs which contain requests to more than one
+hostname/port, be aware that setting $b->keepalive() may not improve
+performance.  See the discussion in the $run->keepalive() section for more
+details.
+
+(default: B<0>)
+
+=item $b->timelimit( $sec_to_max_wait )
+
+Set the maximum number of seconds to wait for requests configured in this
+object to complete (i.e. receive the full response from the server).
+B<Warning>: once the specified number of seconds have elapsed, ApacheBench
+will read one last chunk of data from each open socket, and exit.  This could
+result in partially received responses, which will cause broken sockets for
+the server.
+
+Per-url/per-run time limits can also be specified using the $run->timelimits()
+method, but it does B<not> override this global setting.  If $b->timelimit()
+is set, ApacheBench will exit after $sec_to_max_wait (or slightly over, due to
+final connection reads and building regression data), regardless of any other
+settings.
+
+(default: B<0>, which means wait an unlimited amount of time)
 
 =item $b->buffersize( $bufsz )
 
@@ -354,7 +398,7 @@ Key:
   3  =>  Remember connect/response times, all information
          about request/response sizes, HTTP response
          headers, and also all content of every HTTP
-         response returned by the server.  Warning:
+         response returned by the server.  B<Warning>:
          this can quickly eat up all available main
          memory if used with large runs.
 
@@ -380,8 +424,8 @@ is returned to the caller for safety sake.
 =head2 Run configuration methods
 
 You need to configure one or more benchmark runs.  A run is defined as an
-ordered sequence of HTTP requests to be sent to the server.  Each run can
-be repeated multiple times, and scheduled to be sent in different orders.
+ordered sequence of HTTP requests which can be repeated multiple times,
+and scheduled to be sent in different ways.
 
 =over 4
 
@@ -403,6 +447,9 @@ Length of @cookies should equal $n (whatever you set $run->repeat to).
 If this option is omitted, no cookies will be sent in any of the
 requests for this run.
 
+If you need to set different cookies within a single URL sequence, use
+the request_headers() method.
+
 Example usage:  You could simulate $n users all doing the same transaction
 simultaneously by giving $n different login cookies here.  Say you have
 login cookies in an array called @login of length $n.  Set $run->repeat($n),
@@ -419,17 +466,35 @@ using the constructor.
 =item $run->postdata( \@postdata )
 
 Set the HTTP POST request body contents.  If an undef value is encountered
-in @postdata, that request will be a GET request.  If this option
-is omitted, all requests for this run will be GET requests.
-Length of @postdata should equal the length of @url_list.
-The @postdata array should consist of strings corresponding exactly
-to what you want sent in the HTTP request body as a POST request.
-For example,
+in @postdata, that request will be a GET request (or a HEAD request if you
+used $run->head_requests() below).  If this option is omitted, all requests
+for this run will be GET (or HEAD) requests.  Length of @postdata should
+equal the length of @url_list.  The @postdata array should consist of
+strings corresponding exactly to what you want sent in the HTTP request
+body as a POST request.  For example,
 
   @postdata = (undef, undef, "cgikey1=val1&cgikey2=val2");
 
 will send two GET requests, then a POST request with the CGI parameter
 'cgikey1' set to 'val1' and the CGI parameter 'cgikey2' set to 'val2'.
+
+=item $run->head_requests( \@head_reqs )
+
+Send HTTP HEAD requests for the specified requests in this run.  The
+length of @head_reqs should equal the length of @url_list, and it is
+interpreted as an array of booleans.  Any true value in @head_reqs will
+result in a HEAD request being sent for the corresponding URL (unless the
+corresponding postdata() value is defined, in which case a POST will be sent).
+
+You can configure a run composed of any combination of the three HTTP
+request types (GET, HEAD, and POST), but note that an individual URL with a
+defined postdata() value will cause a POST request regardless of whether
+head_requests() is set for that URL.  The following precedence table
+illustrates which type of request will be sent for URL $url_no in the sequence.
+
+  defined $run->postdata->[$url_no]  ?  ==> POST request
+  $run->head_requests->[$url_no]     ?  ==> HEAD request
+  else                                  ==> GET request
 
 =item $run->content_types( \@ctypes )
 
@@ -455,6 +520,58 @@ no extra headers, one with 1 extra header, and one with 2 extra headers.
 
   $run->request_headers([ undef, undef, "Extra-Header: bread",
                           "Extra-Header1: butter\r\nExtra-Header2: toaster" ])
+
+=item $run->keepalive( \@keepalives )
+
+Use HTTP Keep-Alive feature for the specified requests in this run.  The
+length of @keepalives should equal the length of @url_list, and it is
+interpreted as an array of booleans, with undef indicating to use the
+object default set by $b->keepalive().  Any true value in @keepalives will
+result in a Keep-Alive HTTP request being sent for the corresponding URL.
+
+To achieve full performance benefits from this feature, you need to be sure
+your Keep-Alive requests are consecutive.  If a non-Keep-Alive request or
+a request for a different hostname or port immediately follows a Keep-Alive
+request B<in the connection slot>, I<the connection will be closed> and a
+new connection will be opened.
+
+Further, keep in mind that for $b->concurrency() > 1, there are many
+connection slots open and even though requests in @url_list will be sent
+in order, there is no guarantee they will all use the same connection slot.
+The HTTP Keep-Alive feature only yields performance benefits when consecutive
+Keep-Alive requests use the same connection slot.  Otherwise ApacheBench has
+to close and re-open connections, resulting in the same performance as not
+using keepalive() at all.
+
+To guarantee consecutive Keep-Alive requests with $b->concurrency() > 1,
+I recommend you either declare I<all> URLs in all runs as keepalive()
+(this can be done by setting $b->keepalive( 1 ) and not overriding it by
+calling keepalive() for any runs), or set $run->order( "depth_first" ) and
+$b->priority( "run_priority" ).  This is the only combination of configuration
+options that guarantees consecutive, same-slot Keep-Alive requests
+regardless of your concurrency setting.
+
+For $b->concurrency() == 1, things are simpler.  At any given time, there
+is only one connection slot open, so just make sure your keepalive URLs are
+consecutive within each run (if in "run_priority" mode), or that
+equal-numbered repetitions of URLs in all runs are keepalive (if in
+"equal_opportunity" mode), and be sure that all requests are to the
+same hostname/port.
+
+=item $run->timelimits( \@timelimits )
+
+Set the maximum number of seconds to wait for requests in this
+run to complete (i.e. receive the full response from the server).  The
+length of @timelimits should equal the length of @url_list, and it is
+interpreted as an array of double precision floating point numbers
+(representing the number of seconds to wait for a response).  An undef or 0
+represents waiting an indefinite amount of time for that particular response.
+If this option is not configured, there will be no time limit on any responses.
+
+B<Warning>: once the specified number of seconds have elapsed on the specified
+URL, ApacheBench will close the connection immediately.  This can cause strange
+results in the regression data for this request.  It could also result in
+partially received responses, which will cause broken sockets for the server.
 
 =item $run->order( $order )
 
@@ -554,6 +671,23 @@ first run, and the end of the final response in the final run.
 
 Total bytes received from all responses in all runs.
 
+=item $b->total_requests
+
+Total number of HTTP requests which were configured in this object.
+
+=item $b->total_requests_sent
+
+Total number of HTTP requests which were successfully sent to the server(s).
+
+=item $b->total_responses_received
+
+Total number of complete, successful HTTP responses received.
+
+=item $b->total_responses_failed
+
+Total number of HTTP responses which were not received successfully.
+Check the warning messages for possible explanations of why they failed.
+
 =item $b->warnings
 
 Various warning messages.
@@ -563,6 +697,33 @@ Various warning messages.
 =head2 Run regression methods
 
 =over 4
+
+=item $run->sent_requests( $url_no )
+
+Returns the number of HTTP requests which were B<successfully> sent to the
+server for the URL specified by $url_no.
+
+If $url_no is not given, returns a reference to an array the same length as
+$run->urls() which contains the number of B<successful> HTTP requests sent
+for each url in this run.
+
+=item $run->good_responses( $url_no )
+
+Returns the number of complete, B<successful> HTTP responses received for the
+URL specified by $url_no.
+
+If $url_no is not given, returns a reference to an array the same length as
+$run->urls() which contains the number of B<successful> HTTP responses
+received for each HTTP request in this run.
+
+=item $run->failed_responses( $url_no )
+
+Returns the number of HTTP responses which failed or were otherwise
+B<unsuccessful>, for the URL specified by $url_no.
+
+If $url_no is not given, returns a reference to an array the same length as
+$run->urls() which contains the number of B<unsuccessful> HTTP responses
+received for each HTTP request in this run.
 
 =item $i = $run->iteration( $iter_no )
 
@@ -921,9 +1082,6 @@ what the documentation says above.  This should be fixed soon.  For now,
 just set your $run->buffersize() big enough for the largest page you anticipate
 receiving.
 
-Methods total_requests(), total_requests_sent(), and total_responses_received()
-are temporary hacks that are correct most of the time, but not always.
-
 If you are running in perl's taint-checking mode, and you pass tainted data
 to ApacheBench (e.g. a tainted URL), it will barf.  Don't ask me why.
 
@@ -934,7 +1092,11 @@ Apache 1.3.12 ab (src/support/ab.c), by the Apache group.
 
 The ApacheBench Perl API was originally written by Ling Wu <ling@certsite.com>
 
-Rewritten and currently maintained by Adi Fairbank <adi@certsite.com>
+Rewritten and currently maintained by Adi Fairbank <adi@adiraj.org>
+
+Recent efforts have been made to incorporate the newest ab code from the Apache
+Group.  As of version 0.62, most features of Apache 1.3.22 ab are supported.
+The main exception being SSL.
 
 Please e-mail either Adi or Ling with bug reports, or preferably patches.
 
@@ -947,6 +1109,6 @@ terms of the Perl Artistic License
 
 =head1 LAST MODIFIED
 
-Oct 22, 2001
+Dec 02, 2001
 
 =cut

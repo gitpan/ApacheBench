@@ -38,26 +38,6 @@ sub iteration {
 ##################################################
 ## regression data accessors                    ##
 ##################################################
-sub total_requests_sent {
-    my ($self) = @_;
-    # temporary hack, until {completed,failed}_requests works in ApacheBench.xs
-    return undef unless $self->get_regression_hash;
-    return $#{$self->{urls}} + 1
-      if (defined $self->{'run_no'} and ref $self->{urls} eq "ARRAY");
-    my $total = 0;
-    foreach my $run (@{$self->{runs}}) {
-	my $repeat = $run->repeat ? $run->repeat : $self->{repeat};
-	$total += ($#{$run->urls} + 1) * $repeat
-	  if ref $run->urls eq "ARRAY";
-    }
-    return $total;
-}
-
-sub total_responses_received {
-    my ($self) = @_;
-    return $self->total_requests_sent;
-}
-
 sub total_time {
     my ($self) = @_;
     return undef unless (my $reg = $self->get_regression_hash and
@@ -70,6 +50,27 @@ sub bytes_received {
     return undef unless (my $reg = $self->get_regression_hash and
 			 !defined $self->{'run_no'});
     return $reg->{'bytes_received'};
+}
+
+sub total_requests_sent {
+    my ($self) = @_;
+    return undef unless (my $reg = $self->get_regression_hash and
+			 !defined $self->{'run_no'});
+    return $reg->{'started'};
+}
+
+sub total_responses_received {
+    my ($self) = @_;
+    return undef unless (my $reg = $self->get_regression_hash and
+			 !defined $self->{'run_no'});
+    return $reg->{'good'};
+}
+
+sub total_responses_failed {
+    my ($self) = @_;
+    return undef unless (my $reg = $self->get_regression_hash and
+			 !defined $self->{'run_no'});
+    return $reg->{'failed'};
 }
 
 sub warnings {
@@ -92,6 +93,21 @@ sub iteration_value {
     return $iter->{$value};
 }
 
+
+sub sent_requests {
+    my ($self, $idx) = @_;
+    return $self->iteration(0)->iteration_value('started', "ARRAY", $idx);
+}
+
+sub good_responses {
+    my ($self, $idx) = @_;
+    return $self->iteration(0)->iteration_value('good', "ARRAY", $idx);
+}
+
+sub failed_responses {
+    my ($self, $idx) = @_;
+    return $self->iteration(0)->iteration_value('failed', "ARRAY", $idx);
+}
 
 sub connect_times {
     my ($self, $idx) = @_;

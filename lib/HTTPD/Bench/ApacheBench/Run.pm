@@ -33,7 +33,8 @@ sub initialize {
 sub ready_to_execute {
     my ($self) = @_;
 
-    foreach (qw(urls cookies postdata content_types request_headers)) {
+    foreach (qw(urls cookies postdata head_requests
+		content_types request_headers keepalive timelimits)) {
 	return 0 unless ref $self->{$_} eq "ARRAY";
     }
 
@@ -54,7 +55,8 @@ sub prepare_for_execute {
 
     # set 'postdata', 'content_types', and 'request_headers' to undef
     #  if not specified in run
-    foreach my $param (qw(postdata content_types request_headers)) {
+    foreach my $param (qw(postdata head_requests content_types
+			  request_headers keepalive timelimits)) {
 	$self->{$param} = [ map {undef} @{$self->{urls}} ]
 	  if ref $self->{$param} ne "ARRAY";
     }
@@ -111,10 +113,28 @@ sub postdata {
     return $self->{postdata};
 }
 
+sub head_requests {
+    my ($self, $arg) = @_;
+    $self->{head_requests} = $arg if $arg;
+    return $self->{head_requests};
+}
+
 sub content_types {
     my ($self, $arg) = @_;
     $self->{content_types} = $arg if $arg;
     return $self->{content_types};
+}
+
+sub keepalive {
+    my ($self, $arg) = @_;
+    $self->{keepalive} = $arg if $arg;
+    return $self->{keepalive};
+}
+
+sub timelimits {
+    my ($self, $arg) = @_;
+    $self->{timelimits} = $arg if $arg;
+    return $self->{timelimits};
 }
 
 sub append {

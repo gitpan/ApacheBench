@@ -1,11 +1,14 @@
-1) completely re-implement ab using Perl API
-2) take advantage of HTTP/1.1 keepalives to speed up requests
-3) implement with thread support so an execute() can send
-   independent sequences of HTTP requests concurrently without
-   waiting for all requests to finish in a round
-4) need a way to simulate real-world problems: for example
+* implement per-run execute() using system threads, then global execute() can
+  just fire off as many threads as there are runs
+  - this would allow (re-)sending of individual runs, iterations within a run
+  - complications with concurrent request slots: does each thread keep
+    its own set of file descriptors, or (sh)(c)ould threads share them?
+* need a way to simulate real-world problems: for example
   - slow dialup modem connections
   - user-presses-stop, aka broken socket
-5) (re-)sending of individual runs, iterations within a run
-6) bring up-to-date with current Apache distribution ab.c
+* bring up-to-date with current Apache 2.0 distribution of ab.c
   - including SSL support
+  - completely re-implement ab using Perl API
+* perl subroutine hooks between requests in a sequence, with access
+  to all prior regression data and ability to dynamically change current or
+  future requests in sequence
