@@ -874,7 +874,7 @@ initialize()
 	}
      }
 
-MODULE = ApacheBench		PACKAGE = ApacheBench		
+MODULE = HTTPD::Bench::ApacheBench	PACKAGE = HTTPD::Bench::ApacheBench
 PROTOTYPES: ENABLE
 
 

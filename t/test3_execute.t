@@ -6,10 +6,10 @@ use Test;
 BEGIN { plan tests => 7 }
 
 use Term::ReadKey;
-use ApacheBench;
+use HTTPD::Bench::ApacheBench;
 
-my $b = ApacheBench->new;
-ok(ref $b, "ApacheBench");
+my $b = HTTPD::Bench::ApacheBench->new;
+ok(ref $b, "HTTPD::Bench::ApacheBench");
 
 ReadMode 1;
 print STDERR "\n\nIt is rude to blast other people's servers, please enter local URLs\n";

@@ -12,6 +12,7 @@ os-inline.c
 ap_sha1.h
 Makefile.PL
 MANIFEST
+README
 README.old
 TODO
 t/test1_global_config.t

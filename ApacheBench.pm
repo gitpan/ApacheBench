@@ -1,4 +1,4 @@
-package ApacheBench;
+package HTTPD::Bench::ApacheBench;
 
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
@@ -11,9 +11,9 @@ require AutoLoader;
 @EXPORT = qw(
 	
 );
-$VERSION = '0.5';
+$VERSION = '0.51';
 
-bootstrap ApacheBench $VERSION;
+bootstrap HTTPD::Bench::ApacheBench $VERSION;
 
 ##################################################
 ## the constructor                              ##
@@ -70,13 +70,13 @@ __END__
 
 =head1 NAME
 
-ApacheBench - Perl API for Apache benchmarking and regression testing.
+HTTPD::Bench::ApacheBench - Perl API for Apache benchmarking and regression testing.
 
 =head1 SYNOPSIS
 
-  use ApacheBench;
+  use HTTPD::Bench::ApacheBench;
 
-  my $b = ApacheBench->new;
+  my $b = HTTPD::Bench::ApacheBench->new;
 
   # global configuration
   $b->config({
@@ -174,8 +174,8 @@ First, you will need to construct an ApacheBench object.
 
 B<Example:>
 
-  use ApacheBench;
-  my $b = ApacheBench->new;
+  use HTTPD::Bench::ApacheBench;
+  my $b = HTTPD::Bench::ApacheBench->new;
 
 =head2 Global configuration
 
@@ -484,7 +484,7 @@ HTTP requests are sent.
 
 First, let's set global B<priority> to its default B<equal_opportunity>.
 
-  my $b = ApacheBench->new;
+  my $b = HTTPD::Bench::ApacheBench->new;
   $b->config({
               concurrency => 1,
               priority    => "equal_opportunity",
@@ -565,7 +565,7 @@ option has no effect, since each run can only use a maximum of one
 concurrent server (by definition, it can only be sending one request
 at a time).  So we'll just leave it set to B<run_priority>.
 
-  my $b = ApacheBench->new;
+  my $b = HTTPD::Bench::ApacheBench->new;
   $b->config({
               concurrency => 1,
               priority    => "run_priority",

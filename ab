@@ -2,7 +2,7 @@
 
 use strict;
 use Getopt::Std;
-use ApacheBench;
+use HTTPD::Bench::ApacheBench;
 
 my %options;
 getopt('ncpC', \%options);
@@ -28,7 +28,7 @@ my $c = $options{'c'} || 1;
 my $n = $options{'n'} || 1;
 
 
-my $b = ApacheBench->new;
+my $b = HTTPD::Bench::ApacheBench->new;
 $b->config({
 	    concurrency => $c,
 #	    priority    => "equal_opportunity",

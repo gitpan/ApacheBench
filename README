@@ -1,0 +1,20 @@
+This is ApacheBench version 0.51, the Perl API for Apache
+benchmarking and regression testing.
+
+This project is meant to be the foundation for a complete
+benchmarking and regression testing suite for an advanced,
+transaction-based mod_perl site.  We need to be able to
+stress our server to its limit while also having a way to
+verify the HTTP responses for correctness.  Since our site
+is transaction-based (as opposed to content-based), we
+needed to extend the single-URL ab model to a multiple-URL
+sequence model.
+
+ApacheBench is based on the Apache 1.3.12 ab code
+(src/support/ab.c).
+
+Please see the POD for complete details.
+
+Adi Fairbank
+adi@certsite.com
+September 26, 2000

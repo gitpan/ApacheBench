@@ -5,10 +5,10 @@ use Test;
 
 BEGIN { plan tests => 5 }
 
-use ApacheBench;
+use HTTPD::Bench::ApacheBench;
 
-my $b = ApacheBench->new;
-ok(ref $b, "ApacheBench");
+my $b = HTTPD::Bench::ApacheBench->new;
+ok(ref $b, "HTTPD::Bench::ApacheBench");
 
 $b->config({
 	    concurrency  => 2,
