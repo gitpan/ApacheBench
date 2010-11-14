@@ -8,6 +8,28 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.70 - Nov 14, 2010
+
+add support for dynamic cookie management within runs (emulate what browsers do):
+- read "Set-Cookie:" headers from each response and append corresponding "Cookie:"
+  headers to subsequent requests later in same run
+- feature turned on by default, but can be disabled by run
+
+new method $b->num_runs() to return the number of runs currently configured
+
+clean up XS code some more, renaming variables to be more sensible
+
+get rid of Term::ReadKey based test requiring user input from t/test3_execute.t,
+to stop annoying e-mail from cpantesters
+
+modified behavior of request_body() and response_body() regression methods to
+return only the actual body content, instead of the entire headers and body;
+headers can still be retrieved from request_headers() and response_headers()
+
+better configuration error checking- verify Run->urls is a list of scalars with
+no trailing whitespace before executing, since xs code will segfault if not scalars
+and not process the requests correctly if trailing whitespace
+
 =item 0.63 - Oct 07, 2004
 
 bugfix hanging/infinitely repeating requests when HTTP response headers larger

@@ -4,7 +4,5 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'	=> 'HTTPD::Bench::ApacheBench',
     'VERSION_FROM' => 'lib/HTTPD/Bench/ApacheBench.pm', # finds $VERSION
-    'LIBS'	=> [''],   # e.g., '-lm' 
-    'DEFINE'	=> '',     # e.g., '-DHAVE_SOMETHING' 
-    'INC'	=> '',     # e.g., '-I/usr/include/other' 
+    'DIR' => ['src'],
 );

@@ -8,7 +8,7 @@ require DynaLoader;
 use HTTPD::Bench::ApacheBench::Run;
 use HTTPD::Bench::ApacheBench::Regression;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.63';
+$HTTPD::Bench::ApacheBench::VERSION = '0.70';
 @HTTPD::Bench::ApacheBench::ISA =
   qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 
@@ -194,6 +194,10 @@ sub delete_run {
     return $deleted_run;
 }
 
+sub num_runs {
+    my ($self) = @_;
+    return scalar(@{$self->{runs} || []});
+}
 
 
 1;
@@ -419,6 +423,10 @@ whatever was there.  The displaced run object is then returned.
 Delete the run object stored in location $run_no.  The deleted run object
 is returned to the caller for safety sake.
 
+=item $b->num_runs()
+
+Returns the number of runs currently configured in $b.
+
 =back
 
 =head2 Run configuration methods
@@ -440,15 +448,31 @@ Number of times to repeat this request sequence.
 
 (default: B<1>, or whatever is specified in global configuration)
 
+=item $run->use_auto_cookies( 0|1 )
+
+Controls whether to enable dynamic setting of cookies based on previous
+response headers in this run.  If set, will parse the Set-Cookie: headers
+in each response in the run, and set the corresponding Cookie: headers in
+all subsequent requests in this run.  (basically a crude, but fast emulation
+of a browser's cookie handling mechanism)  The cookies are cumulative for
+each iteration of the run, so they will accumulate with each request/response
+pair until the next iteration, when they get reset.
+
+(default: B<1>)
+
 =item $run->cookies( \@cookies )
 
-Set the HTTP Cookie: header for each B<repetition> of this run.
+Set any extra HTTP Cookie: headers for each B<repetition> of this run.
 Length of @cookies should equal $n (whatever you set $run->repeat to).
-If this option is omitted, no cookies will be sent in any of the
+If this option is omitted, only auto-set cookies will be sent in
 requests for this run.
 
 If you need to set different cookies within a single URL sequence, use
 the request_headers() method.
+
+Note: this is somewhat obsolete now that there is support for dynamic
+cookies, but is kept for backwards compatibility and in case you want to
+add your own "static" cookies.
 
 Example usage:  You could simulate $n users all doing the same transaction
 simultaneously by giving $n different login cookies here.  Say you have

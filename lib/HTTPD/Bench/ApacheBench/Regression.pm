@@ -205,9 +205,16 @@ sub sum_bytes_read {
     return $self->iteration_value('total_bytes_read');
 }
 
+sub request_headers {
+    my ($self, $idx) = @_;
+    return $self->iteration_value('request_headers', "ARRAY", $idx);
+}
+
 sub request_body {
     my ($self, $idx) = @_;
-    return $self->iteration_value('request_body', "ARRAY", $idx);
+    my $request = $self->iteration_value('request_body', "ARRAY", $idx);
+    $request =~ s,^.*?\r?\n\r?\n,,s;
+    return $request;
 }
 
 sub response_headers {
@@ -217,7 +224,9 @@ sub response_headers {
 
 sub response_body {
     my ($self, $idx) = @_;
-    return $self->iteration_value('page_content', "ARRAY", $idx);
+    my $response = $self->iteration_value('page_content', "ARRAY", $idx);
+    $response =~ s,^.*?\r?\n\r?\n,,s;
+    return $response;
 }
 
 sub response_body_lengths {

@@ -37,6 +37,7 @@ sub ready_to_execute {
 		content_types request_headers keepalive timelimits)) {
 	return 0 unless ref $self->{$_} eq "ARRAY";
     }
+    return 0 if grep { ref($_) || m/\s$/ } @{$self->{urls}};
 
     return 1;
 }
@@ -49,6 +50,13 @@ sub prepare_for_execute {
 
     # without 'urls' list, execute cannot continue
     return 0 unless ref $self->{urls} eq "ARRAY";
+
+    # if 'urls' list is not a list of scalars, will segfault; die here instead
+    die "Improper configuration: run urls must be a list of scalars"
+      if grep { ref $_ } @{$self->{urls}};
+
+    # whitespace at the end of urls will cause trouble
+    map { chomp $_ } @{$self->{urls}};
 
     # set 'cookies' to undef if not specified
     $self->{cookies} = [undef] unless ref $self->{cookies} eq "ARRAY";
@@ -87,6 +95,12 @@ sub buffersize {
     my ($self, $arg) = @_;
     $self->{buffersize} = $arg if $arg;
     return $self->{buffersize};
+}
+
+sub use_auto_cookies {
+    my ($self, $arg) = @_;
+    $self->{use_auto_cookies} = $arg if defined $arg;
+    return $self->{use_auto_cookies};
 }
 
 sub cookies {

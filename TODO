@@ -5,14 +5,15 @@
     its own set of file descriptors, or (sh)(c)ould threads share them?
 * need a way to simulate real-world problems: for example
   - slow dialup modem connections
+    o e.g. add an automatic delay after each request in a run
+    o also support a pre-configured delay inside a run
   - user-presses-stop, aka broken socket
 * bring up-to-date with current Apache 2.0 distribution of ab.c
   - including SSL support
-  - completely re-implement ab using Perl API
 * perl subroutine hooks between requests in a sequence, with access
   to all prior regression data and ability to dynamically change current or
   future requests in sequence
 * XML configuration files, like Apache's flood project
-* more logicial object-based configuration; make a single request into an
+* more logical object-based configuration; make a single request into an
   object; try to replicate LWP: HTTP::Request and HTTP::Response
 * time-limit repeat feature: keep sending requests for NNN seconds
