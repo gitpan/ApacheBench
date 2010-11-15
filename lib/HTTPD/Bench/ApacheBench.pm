@@ -8,7 +8,7 @@ require DynaLoader;
 use HTTPD::Bench::ApacheBench::Run;
 use HTTPD::Bench::ApacheBench::Regression;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.70';
+$HTTPD::Bench::ApacheBench::VERSION = '0.71';
 @HTTPD::Bench::ApacheBench::ISA =
   qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 

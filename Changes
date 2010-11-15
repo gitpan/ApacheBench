@@ -8,6 +8,15 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.71 - Nov 15, 2010
+
+implement strnstr() function since glibc does not have it (in src/apachebench/util.c)
+
+reorganize all C code into logically separated libraries: src/apachebench/*.[ch]
+
+remove includes to apache header files ap.h, ap_config.h, ap_ctype.h, os.h, os-win32.h, etc;
+now we rely completely on system includes
+
 =item 0.70 - Nov 14, 2010
 
 add support for dynamic cookie management within runs (emulate what browsers do):
