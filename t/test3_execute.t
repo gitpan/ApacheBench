@@ -3,6 +3,7 @@
 use strict;
 use Test;
 use HTTPD::Bench::ApacheBench;
+use Net::HTTP;
 
 BEGIN { plan tests => 25 }
 
@@ -62,12 +63,22 @@ ok($#$run2urls, $#urls);
 ok($b->run(2)->content_types([map {"text/plain"} @urls]));
 
 
+my ($host) = ( $urls[0] =~ m|http://([^/]+)| );
+my $connected = Net::HTTP->new( Host => $host );
+
+if (! defined $connected) {
+    print STDERR "\n  Cannot connect to http server on: ".join(',', @urls)."\n  reason: $@\n ... skipping remaining tests\n";
+    foreach (1..8) { skip(1, 1) }
+    exit();
+}
+
 print STDERR "\n  Sending HTTP requests to: ".join(',', @urls)."\n";
 my $rg = $b->execute;
 
 ok(ref $rg, "HTTPD::Bench::ApacheBench::Regression");
 
-if ($run0->failed_responses(0) && $run1->failed_responses(0) && $run2->failed_responses(0)) {
+if (! $run0->sent_requests(0) || ! $run1->sent_requests(0) || ! $run2->sent_requests(0)
+      || $run0->failed_responses(0) || $run1->failed_responses(0) || $run2->failed_responses(0)) {
     print STDERR "\n  Cannot connect to http server on: ".join(',', @urls)." ... skipping remaining tests\n";
     foreach (1..7) { skip(1, 1) }
 

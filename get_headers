@@ -4,7 +4,6 @@
 # HTTP headers returned by the server from a given URL
 #
 die "usage: $0 http://url/" unless $ARGV[0];
-use blib ".";
 use HTTPD::Bench::ApacheBench;
 my $b = HTTPD::Bench::ApacheBench->new;
 my $run1 = HTTPD::Bench::ApacheBench::Run->new({ urls => [$ARGV[0]] });

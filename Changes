@@ -8,6 +8,29 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.72 - Oct 18, 2011
+
+bugfix: fix a segmentation fault caused by improperly malloc'd memory for the auto_cookie feature
+(see rt.cpan.org bug #71698)
+
+increase default buffersize from 16384 (16K) to 262144 (256K) - used for http response body when memory >= 3
+
+increase default request_buffersize from 2048 (2K) to 8192 (8K)
+
+change timing logic to not include the time taken to generate a POST body using postdata
+coderefs; this allows using the postdata coderefs to do other useful things like inserting
+random delays to simulate real-world use - see perldoc for details
+
+add support for postdata functions that can generate CGI data for body of POST request
+by looking at the response body from the previous request in run - see perldoc for syntax
+
+minor changes so Run class can be subclassed
+
+add INSTALL.SKIP so *.[ch] files do not get installed to perl lib path unnecessarily
+
+fix t/test3_execute.t to skip call to execute() if http server on localhost is not running,
+to stop cpantesters from rightfully complaining
+
 =item 0.71 - Nov 15, 2010
 
 implement strnstr() function since glibc does not have it (in src/apachebench/util.c)

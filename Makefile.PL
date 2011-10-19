@@ -4,5 +4,6 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'	=> 'HTTPD::Bench::ApacheBench',
     'VERSION_FROM' => 'lib/HTTPD/Bench/ApacheBench.pm', # finds $VERSION
+    'PREREQ_PM' => { Net::HTTP => 0 },
     'DIR' => ['src'],
 );

@@ -29,7 +29,7 @@ struct connection {
     int thread;			/* Thread number */
     int run;
 
-    struct timeval start_time, connect_time, sent_request_time, done_time;
+    struct timeval start_time, connect_time, before_postdata_time, sent_request_time, done_time;
 
     char *request;		/* HTTP request */
     char *request_headers;
@@ -80,6 +80,7 @@ struct global {
 
     int *posting;		/* GET if ==0, POST if >0, HEAD if <0 */
     char **postdata, **cookie;	/* datas for post and optional cookie line */
+    SV **postsubs;		/* coderefs for post */
     char **req_headers;		/* optional arbitrary request headers to add */
     char ***auto_cookies;	/* cookies extracted from response_headers for the run, i.e. set by http server */
     bool *use_auto_cookies;	/* whether to use auto_cookie feature for the run */

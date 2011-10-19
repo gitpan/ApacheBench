@@ -72,6 +72,13 @@ sub prepare_for_execute {
     return 1;
 }
 
+sub pre_execute_warnings {
+    my ($self) = @_;
+
+    warn "WARNING: Running with memory level < 3 and using CODE refs in postdata!  This will not give your desired results."
+      if $self->{memory} < 3 && grep { ref $_ eq 'CODE' } @{$self->{postdata}};
+}
+
 
 sub repeat {
     my ($self, $arg) = @_;

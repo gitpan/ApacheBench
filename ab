@@ -1,7 +1,5 @@
 #!/usr/bin/perl
 
-my $VERSION = "0.5";
-
 use strict;
 use Getopt::Std;
 use HTTPD::Bench::ApacheBench;
@@ -133,11 +131,11 @@ Options are:
 
 
 sub show_version {
-    print qq`This is ab implemented using the ApacheBench Perl API, version $VERSION
+    print qq`This is ab implemented using the ApacheBench Perl API, version $HTTPD::Bench::ApacheBench::VERSION
 Copyright (c) 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
 Copyright (c) 1998-1999 The Apache Group, http://www.apache.org/
 Copyright (c) 2000-2002 Ling Wu, Adi Fairbank, http://www.certsite.com/
-Copyright (c) 2003-2004 Adi Fairbank, http://adiraj.org/
+Copyright (c) 2003-2011 Adi Fairbank, http://adiraj.org/
 
 `;
 }

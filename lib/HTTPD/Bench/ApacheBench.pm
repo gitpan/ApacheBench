@@ -3,14 +3,12 @@ package HTTPD::Bench::ApacheBench;
 use strict;
 use vars qw($VERSION @ISA);
 
-require DynaLoader;
+use base qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 
 use HTTPD::Bench::ApacheBench::Run;
-use HTTPD::Bench::ApacheBench::Regression;
+use Scalar::Util qw/blessed/;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.71';
-@HTTPD::Bench::ApacheBench::ISA =
-  qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
+$HTTPD::Bench::ApacheBench::VERSION = '0.72';
 
 bootstrap HTTPD::Bench::ApacheBench $VERSION;
 
@@ -20,7 +18,7 @@ bootstrap HTTPD::Bench::ApacheBench $VERSION;
 sub new {
     my ($this, $self) = @_;
     my $class = ref($this) || $this;
-    if (ref($self) ne "HASH") {	$self = {} }
+    if (ref($self) ne 'HASH') { $self = {} }
     bless $self, $class;
     $self->initialize;
     return $self;
@@ -31,15 +29,15 @@ sub new {
 ##################################################
 sub initialize {
     my ($self) = @_;
-    $self->{runs} = [] if ref $self->{runs} ne "ARRAY";
-    $self->{concurrency} = 1 unless $self->{concurrency};
-    $self->{timelimit} = undef unless defined $self->{timelimit};
-    $self->{repeat} = 1 unless $self->{repeat};
-    $self->{priority} = "equal_opportunity" unless $self->{priority};
-    $self->{keepalive} = 0 unless defined $self->{keepalive};
-    $self->{buffersize} = 16384 unless $self->{buffersize};
-    $self->{request_buffersize} = 2048 unless $self->{request_buffersize};
-    $self->{memory} = 1 unless defined $self->{memory};
+    $self->{runs} = [] if ref $self->{runs} ne 'ARRAY';
+    $self->{concurrency} ||= 1;
+    $self->{repeat} ||= 1;
+    $self->{priority} ||= "equal_opportunity";
+    $self->{buffersize} ||= 262144;
+    $self->{request_buffersize} ||= 8192;
+    $self->{timelimit} = undef if ! defined $self->{timelimit};
+    $self->{keepalive} = 0 if ! defined $self->{keepalive};
+    $self->{memory} = 1 if ! defined $self->{memory};
 }
 
 
@@ -103,12 +101,12 @@ sub request_buffersize {
 
 sub total_requests {
     my ($self) = @_;
-    return 0 unless ref $self->{runs} eq "ARRAY";
+    return 0 if ref $self->{runs} ne 'ARRAY';
     my $total = 0;
     foreach my $run (@{$self->{runs}}) {
 	my $repeat = $run->repeat ? $run->repeat : $self->{repeat};
 	$total += ($#{$run->urls} + 1) * $repeat
-	  if ref $run->urls eq "ARRAY";
+	  if ref $run->urls eq 'ARRAY';
     }
     return $total;
 }
@@ -123,7 +121,7 @@ sub execute {
     my %altered;
 
     # fail if they have not added any runs
-    return undef unless ref $self->{runs} eq "ARRAY";
+    return undef if ref $self->{runs} ne 'ARRAY';
 
     # pre execute initialization of each run
     foreach my $run_no (0..$#{$self->{runs}}) {
@@ -133,14 +131,16 @@ sub execute {
 	  return undef;
 
 	# default to base ApacheBench object variables if not specified in run
-	unless ($runobj->repeat) {
+	if (! $runobj->repeat) {
 	    $runobj->repeat($self->{repeat});
 	    $altered{$run_no}->{repeat} = 1;
 	}
-	unless (defined $runobj->memory) {
+	if (! defined $runobj->memory) {
 	    $runobj->memory($self->{memory});
 	    $altered{$run_no}->{memory} = 1;
 	}
+
+        $runobj->pre_execute_warnings;
     }
 
     # call the XS code and store regression data
@@ -166,10 +166,9 @@ sub execute {
 ##################################################
 sub run {
     my ($self, $run_no, $run) = @_;
-    return undef unless
-      (ref $self->{runs} eq "ARRAY" &&
-       ref $self->{runs}->[$run_no] eq "HTTPD::Bench::ApacheBench::Run");
-    if (ref $run eq "HTTPD::Bench::ApacheBench::Run") {
+    return undef if ! (ref $self->{runs} eq 'ARRAY' && blessed $self->{runs}->[$run_no]
+                         && $self->{runs}->[$run_no]->isa('HTTPD::Bench::ApacheBench::Run'));
+    if (blessed $run && $run->isa('HTTPD::Bench::ApacheBench::Run')) {
 	my $replaced_run = $self->{runs}->[$run_no];
 	$self->{runs}->[$run_no] = $run;
 	return $replaced_run;
@@ -179,15 +178,15 @@ sub run {
 
 sub add_run {
     my ($self, $newrun) = @_;
-    return undef unless (ref $self->{runs} eq "ARRAY" and
-			 ref $newrun eq "HTTPD::Bench::ApacheBench::Run");
+    return undef if ! (ref $self->{runs} eq 'ARRAY' && blessed $newrun
+                         && $newrun->isa('HTTPD::Bench::ApacheBench::Run'));
     push(@{$self->{runs}}, $newrun);
     return $#{$self->{runs}};
 }
 
 sub delete_run {
     my ($self, $run_no) = @_;
-    return undef unless ref $self->{runs} eq "ARRAY";
+    return undef if ref $self->{runs} ne 'ARRAY';
     my $deleted_run = $self->{runs}->[$run_no];
     $self->{runs} = [ @{$self->{runs}}[0..$run_no-1],
 		      @{$self->{runs}}[$run_no+1..$#{$self->{runs}}] ];
@@ -226,10 +225,25 @@ HTTPD::Bench::ApacheBench - Perl API for Apache benchmarking and regression test
   my $run2 = HTTPD::Bench::ApacheBench::Run->new
     ({ urls    => ["http://localhost/three", "http://localhost/four"],
        cookies => ["Login_Cookie=b3dcc9bac34b7e60;"],
+       # note: manual cookies no longer necessary due to use_auto_cookies (enabled by default)
        order   => "depth_first",
        repeat  => 10,
        memory  => 2 });
   $b->add_run($run2);
+
+  my $run3 = HTTPD::Bench::ApacheBench::Run->new
+    ({ urls     => ["http://localhost/five", "http://localhost/six"],
+       memory   => 3,
+       postdata => [
+           sub($) { sleep(int(rand(5)) + 1); return undef; },
+           sub($) {
+               my $prev_response = shift;
+               sleep(int(rand(5)) + 1);
+               my ($username) = ( $prev_response =~ m|<div id="userName">([^<>]+)</div>|i );
+               return $username ? 'cgi-username='.$username : undef;
+           },
+       ] });
+  $b->add_run($run3);
 
   # send HTTP request sequences to server and time responses
   my $ro = $b->execute;
@@ -258,7 +272,9 @@ having a way to verify the HTTP responses for correctness.  Since our site
 is transaction-based (as opposed to content-based), we needed to extend
 the single-URL ab model to a multiple-URL sequence model.
 
-ApacheBench is based on the Apache 1.3.12 ab code (src/support/ab.c).
+ApacheBench was originally based on the Apache 1.3.12 ab code
+(src/support/ab.c), but has since undergone major rewrites and now barely
+resembles ab.c.
 
 Note: although this tool was designed to be used on an Apache mod_perl
 site, it is generally applicable to any HTTP-compliant server.  Beware,
@@ -277,8 +293,8 @@ can stress your server to 100% capacity, especially if invoked in multiple
 concurrent instances.  It gives accurate time measurements down to the
 millisecond for each HTTP request-response interval.
 
-Included is a simplified re-implementation of ab using the ApacheBench
-Perl API.  This should help get you started with ApacheBench.
+Included is a simplified re-implementation of ab using the ApacheBench/Perl
+API.  This should help get you started with ApacheBench.
 
 =head1 CONFIGURATION METHODS
 
@@ -359,21 +375,21 @@ settings.
 
 =item $b->buffersize( $bufsz )
 
-The size of the buffer in which to store HTTP response bodies.
+The size of the buffer in which to store HTTP response bodies, in bytes.
 If an HTTP response is received with a size larger than this limit,
 the content is truncated at length $bufsz, and a warning is issued.
 This method has no effect if $b->memory() < 3.
 This can be overridden on a per-run basis (see below).
 
-(default: B<16384>)
+(default: B<262144> or 256K)
 
 =item $b->request_buffersize( $req_bufsz )
 
-The size of the buffer in which to store HTTP requests.  If you
+The size of the buffer in which to store HTTP requests, in bytes.  If you
 configure an HTTP request that is larger than this limit, unpredictable
 things will happen. (most likely a segmentation fault)
 
-(default: B<2048>)
+(default: B<8192> or 8K)
 
 =item $b->memory( $memlvl )
 
@@ -492,15 +508,68 @@ using the constructor.
 Set the HTTP POST request body contents.  If an undef value is encountered
 in @postdata, that request will be a GET request (or a HEAD request if you
 used $run->head_requests() below).  If this option is omitted, all requests
-for this run will be GET (or HEAD) requests.  Length of @postdata should
-equal the length of @url_list.  The @postdata array should consist of
-strings corresponding exactly to what you want sent in the HTTP request
-body as a POST request.  For example,
+for this run will be GET (or HEAD) requests.
 
-  @postdata = (undef, undef, "cgikey1=val1&cgikey2=val2");
+Length of @postdata should equal the length of @url_list.  
+
+The @postdata array should consist of either strings or code refs (or undef).
+A string value will make this request always a POST.  An undef makes this
+request always a GET.  If a code ref, it will depend on the return value of
+the called code. (see below for details)
+
+The strings should contain exactly what you want sent in the HTTP POST request
+body.  For example,
+
+  @postdata = (undef, undef, 'cgikey1=val1&cgikey2=val2');
 
 will send two GET requests, then a POST request with the CGI parameter
 'cgikey1' set to 'val1' and the CGI parameter 'cgikey2' set to 'val2'.
+
+The code refs should be references to subroutines that take one string
+argument, which will be the http response (both headers and body) returned
+from the *previous* request in this run, and return CGI post data as above.
+If a subroutine returns undef, then the request will be a GET rather than a
+POST.  If the return value is a string (even empty string), the request sent
+will be a POST with the string as the request body.
+
+For example,
+
+  @postdata = (undef, sub($) {
+    my $prev_response = shift;
+    my ($username) = ( $prev_response =~ m|<div id="userName">([^<>]+)</div>|i );
+    return $username ? 'cgi-username='.$username : undef;
+  });
+
+will send one GET request, then it will scan the HTTP response body returned by
+the server for that GET request, and pull out any text (non-HTML) inside the HTML div
+with id = "userName".
+
+This text is then sent in a POST request as the value of CGI parameter 'cgi-username'.
+If the <div id="userName"> element is not found in the most recent http response,
+then the second request will be a GET instead of a POST request.
+
+WARNING: when using code refs in @postdata, you need to be running with $run->memory(3),
+since it needs to remember the most recent http response content.  If you forget, you will
+be warned at runtime (and your POST requests will likely not send the desired content).
+
+NOTES:
+
+ 1. The time taken to call your postdata function is not included in the
+    times reported in the Regression object.  This is intentional, so you can
+    benchmark your server response time, not your load testing script.
+
+ 2. You can use the above property to implement a random delay between http
+    requests; while this is sort of a hack of the postdata function feature,
+    it is much easier to implement a random delay this way than to add it in C.
+
+    e.g. the following postdata coderef would produce a GET request with a
+         random 1-5 sec delay:
+
+    sub($) {
+        sleep(int(rand(5)) + 1);
+        return undef;
+    }
+    
 
 =item $run->head_requests( \@head_reqs )
 
@@ -516,9 +585,16 @@ defined postdata() value will cause a POST request regardless of whether
 head_requests() is set for that URL.  The following precedence table
 illustrates which type of request will be sent for URL $url_no in the sequence.
 
-  defined $run->postdata->[$url_no]  ?  ==> POST request
+  defined $run->postdata->[$url_no] && ! ref($run->postdata->[$url_no])
+                                     ?  ==> POST request
+  defined $run->postdata->[$url_no] && ref($run->postdata->[$url_no]) eq 'CODE'
+           && defined $run->postdata->[$url_no]->( $preceding_response )
+                                     ?  ==> POST request
+  defined $run->postdata->[$url_no] && ref($run->postdata->[$url_no]) eq 'CODE'
+           && ! defined $run->postdata->[$url_no]->( $preceding_response )
+                                     ?  ==> GET request
   $run->head_requests->[$url_no]     ?  ==> HEAD request
-  else                                  ==> GET request
+  else                               :  ==> GET request
 
 =item $run->content_types( \@ctypes )
 
@@ -628,7 +704,7 @@ If an HTTP response is received with a size larger than this limit,
 the content is truncated at length $bufsz, and a warning is issued.
 This method has no effect if $run->memory() < 3.
 
-(default: B<16384>, or whatever is specified in global configuration)
+(default: B<262144> or 256K, or whatever is specified in global configuration)
 
 =item $run->memory( $memlvl )
 
@@ -1112,10 +1188,9 @@ If you do not configure correctly, you may experience a
 segmentation fault on execute().
 
 The response body of any response which is larger than the B<buffersize>
-applicable to it will be truncated to zero length.  This is contrary to
-what the documentation says above.  This should be fixed soon.  For now,
-just set your $run->buffersize() big enough for the largest page you anticipate
-receiving.
+applicable to it may be truncated to zero length.  If you expect to receive
+responses larger than the default 256K buffersize, make sure to set your
+$run->buffersize() big enough for the largest page you anticipate receiving.
 
 If you are running in perl's taint-checking mode, and you pass tainted data
 to ApacheBench (e.g. a tainted URL), it will barf.  Don't ask me why.
