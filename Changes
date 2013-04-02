@@ -8,6 +8,13 @@ all changes without author attribution are by Adi Fairbank
 
 =over 3
 
+=item 0.73 - Apr 2, 2013
+
+workaround possible test failure in test3_execute.t when localhost returns response so fast it rounds to 0
+and causes a division by zero error
+
+remove obsolete sections of the documentation, and unmaintained dates
+
 =item 0.72 - Oct 18, 2011
 
 bugfix: fix a segmentation fault caused by improperly malloc'd memory for the auto_cookie feature

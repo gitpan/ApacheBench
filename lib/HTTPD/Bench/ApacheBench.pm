@@ -8,7 +8,7 @@ use base qw(DynaLoader HTTPD::Bench::ApacheBench::Regression);
 use HTTPD::Bench::ApacheBench::Run;
 use Scalar::Util qw/blessed/;
 
-$HTTPD::Bench::ApacheBench::VERSION = '0.72';
+$HTTPD::Bench::ApacheBench::VERSION = '0.73';
 
 bootstrap HTTPD::Bench::ApacheBench $VERSION;
 
@@ -493,7 +493,7 @@ add your own "static" cookies.
 Example usage:  You could simulate $n users all doing the same transaction
 simultaneously by giving $n different login cookies here.  Say you have
 login cookies in an array called @login of length $n.  Set $run->repeat($n),
-$run->order("breadth_first"), $run->cookies([map {$login[$_]} 0..$n]), and
+$run->order("breadth_first"), $run->cookies([map {$login[$_]} 0..$n-1]), and
 ApacheBench will perform the transaction sequence set by $run->urls $n times,
 each with a separate login cookie.
 
@@ -1159,35 +1159,13 @@ Perl output:
     39
 
 
-=head1 PORTABILITY
-
-ApacheBench/Perl has been tested and verified to work on the following
-platforms:
-
-  kernel          Perl version   compiler             arch  distribution
-  ------          ------------   --------             ----  ------------
-  FreeBSD 4.4     Perl 5.005_03  gcc 2.95.3           x86
-  Linux 2.2.x     Perl 5.005_03  egcs-2.91.66         x86   RedHat 6.2
-  Linux 2.4.x     Perl 5.6.0     gcc 2.96             x86   RedHat 7.1
-  SunOS 5.8       Perl 5.6.1     gcc 2.95.2           x86
-  Darwin 6.0      Perl 5.6.0     *gcc 3.1 20020420    ppc   OS X 10.2, Jaguar
-  BSDI BSD/OS 4.2 Perl 5.005_03  gcc 2.95.2 19991024  x86   BSDI 4.2
-
- * = Apple Computer, Inc. GCC version 1151, based on gcc version 3.1 20020420 (prerelease)
-
-Please send patches for ports to other platforms to me (Adi Fairbank).
-I have received numerous reports of segmentation faults on Solaris, but I
-tested it on a SunOS 5.8 machine running on i386 architecure and it
-worked fine.  It may have problems running on Sun hardware, or newer versions
-of Solaris.
-
 =head1 BUGS
 
-Error checking is getting better but is still not great.
+Error checking in configuration is good but not perfect.
 If you do not configure correctly, you may experience a
 segmentation fault on execute().
 
-The response body of any response which is larger than the B<buffersize>
+The body of any response which comes back larger than the B<buffersize>
 applicable to it may be truncated to zero length.  If you expect to receive
 responses larger than the default 256K buffersize, make sure to set your
 $run->buffersize() big enough for the largest page you anticipate receiving.
@@ -1211,7 +1189,7 @@ Recent efforts have been made to incorporate the newest ab code from the Apache
 Group.  As of version 0.62, most features of Apache 1.3.22 ab are supported.
 The main exception being SSL.
 
-Please e-mail either Adi or Ling with bug reports, or preferably patches.
+Please e-mail Adi with bug reports, or preferably patches.
 
 =head1 LICENSE
 
@@ -1219,9 +1197,5 @@ This package is free software and is provided AS IS without express or
 implied warranty.  It may be used, redistributed and/or modified under the
 terms of the Perl Artistic License
 (http://www.perl.com/perl/misc/Artistic.html)
-
-=head1 LAST MODIFIED
-
-Dec 15, 2002
 
 =cut

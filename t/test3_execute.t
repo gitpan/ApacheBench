@@ -85,8 +85,9 @@ if (! $run0->sent_requests(0) || ! $run1->sent_requests(0) || ! $run2->sent_requ
 } else {
     print STDERR ("\n  ".$b->bytes_received . " bytes, " . $b->total_responses_received .
                     " responses received in " . $b->total_time . " ms");
-    print STDERR ("\n  ".$b->total_responses_received*1000/$b->total_time) . " req/sec";
-    print STDERR ("\n  ".$b->bytes_received*1000/1024/$b->total_time) . " kb/sec\n";
+    my $total_time = $b->total_time || 0.0001; # prevent division by zero for very fast responses, e.g. localhost
+    print STDERR ("\n  ".$b->total_responses_received*1000 / $total_time) . " req/sec";
+    print STDERR ("\n  ".$b->bytes_received*1000/1024 / $total_time) . " kb/sec\n";
     
     ok(defined $b->total_responses_received);
     ok(defined $b->total_time);
